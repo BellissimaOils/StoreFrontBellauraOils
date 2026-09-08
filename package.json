@@ -1,0 +1,62 @@
+{
+  "name": "bellaura-oils-storefront",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "vite": "vite",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && node scripts/postbuild-html.mjs",
+    "start": "node dist/server.cjs",
+    "lint": "tsc --noEmit"
+  },
+  "allowScripts": {
+    "@google/genai": true,
+    "esbuild": true,
+    "protobufjs": true
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1053.0",
+    "@clerk/react": "^6.7.2",
+    "@google/genai": "^1.29.0",
+    "@sentry/react": "^10.69.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "axios": "^1.19.0",
+    "compression": "^1.8.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
+    "jsonwebtoken": "^9.0.3",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "node-cron": "^4.2.1",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "react-helmet-async": "^3.0.0",
+    "react-hot-toast": "^2.6.0",
+    "react-router-dom": "^7.15.1",
+    "vite": "^6.2.3"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.8.1",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^22.14.0",
+    "@types/node-cron": "^3.0.11",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2"
+  },
+  "optionalDependencies": {
+    "@esbuild/win32-x64": "^0.28.1",
+    "@rollup/rollup-win32-x64-msvc": "^4.62.4",
+    "@tailwindcss/oxide-win32-x64-msvc": "^4.3.3",
+    "lightningcss-win32-x64-msvc": "^1.33.0"
+  }
+}

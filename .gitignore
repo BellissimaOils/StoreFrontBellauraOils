@@ -1,0 +1,11 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+# Runtime data files — never commit (contain real passwords/orders/user data)
+database.json
+reviews_table.json

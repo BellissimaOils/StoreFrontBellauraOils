@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Bellaura Oils">
+  <!-- Brand mark: white "B" on the brand purple.
+       The letter is a hand-authored path rather than a <text> element on
+       purpose: an SVG used as a favicon is rasterised without access to web
+       fonts, and in some renderers without access to system fonts either, so
+       a <text> glyph can come out as the wrong typeface or as nothing at all.
+       A path renders identically everywhere. -->
+  <rect width="512" height="512" rx="112" fill="#8854c0"/>
+  <g transform="translate(-18,-20)" fill="#ffffff" fill-rule="evenodd">
+    <path d="M 150 116
+             H 292
+             C 344 116 380 148 380 196
+             C 380 228 364 252 338 264
+             C 372 274 396 302 396 342
+             C 396 396 356 436 292 436
+             H 150
+             Z
+             M 214 168
+             V 240
+             H 288
+             C 314 240 330 226 330 204
+             C 330 182 314 168 288 168
+             Z
+             M 214 292
+             V 384
+             H 292
+             C 322 384 340 368 340 338
+             C 340 310 322 292 292 292
+             Z"/>
+  </g>
+</svg>
