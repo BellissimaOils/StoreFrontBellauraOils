@@ -544,7 +544,7 @@ export default function GeneralReviewPage() {
                                   ? `Qu'avez-vous pensé de ${target.name} ?`
                                   : `What did you think of ${target.name}?`
                           }
-                          className="w-full border border-primary-earth/30 p-4 bg-transparent focus:border-accent-gold focus:outline-none transition-colors duration-300 resize-none font-light placeholder:text-primary-earth/30"
+                          className="w-full border-2 border-purple-300 bg-[#f8f5fc] p-4 text-primary-earth rounded-xl focus:border-purple-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all duration-300 resize-none font-normal placeholder:text-purple-900/40 shadow-2xs"
                         />
                       </div>
                     ))}
@@ -586,13 +586,13 @@ export default function GeneralReviewPage() {
                                 ? "Qu'en avez-vous pensé ?"
                                 : 'What did you think of it?'
                           }
-                          className="w-full border border-primary-earth/30 p-4 bg-transparent focus:border-accent-gold focus:outline-none transition-colors duration-300 resize-none font-light placeholder:text-primary-earth/30"
+                          className="w-full border-2 border-purple-300 bg-[#f8f5fc] p-4 text-primary-earth rounded-xl focus:border-purple-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all duration-300 resize-none font-normal placeholder:text-purple-900/40 shadow-2xs"
                         />
                       </div>
                     )}
                   </div>
                 ) : (
-                  <p className="text-xs text-primary-earth/50 font-light border border-dashed border-primary-earth/20 p-4 text-center">
+                  <p className="text-xs text-purple-900/90 font-medium border-2 border-dashed border-purple-300 bg-[#f8f5fc] p-5 text-center rounded-xl shadow-2xs">
                     {isAr
                       ? 'اختر منتجاً أعلاه لكتابة رأيك عنه.'
                       : isFr
