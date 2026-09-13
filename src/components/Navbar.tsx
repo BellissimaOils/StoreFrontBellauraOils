@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShoppingBag, Globe, Lock } from 'lucide-react';
+import { ShoppingBag, Globe } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useProducts } from '../context/ProductContext';
@@ -7,8 +7,6 @@ import CartOverlay from './CartOverlay';
 import { Link, useLocation } from 'react-router-dom';
 import { normalizeLinkUrl } from '../lib/urlUtils';
 import { Language } from '../translations';
-import {  UserButton, useUser  } from '../lib/clerk';
-import { ClerkErrorBoundary } from './ClerkErrorBoundary';
 import { fetchWithCache, getCachedSync } from '../lib/apiCache';
 
 // Parse nav links from a sections API response for the current language.
@@ -30,9 +28,7 @@ export default function Navbar() {
   const location = useLocation();
   const [isLangOpen, setIsLangOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-  const { isSignedIn } = useUser();
-  // Admin access is now Clerk-only — no separate OnlyMe gate flag needed.
-  const showAdminAccess = isSignedIn;
+
 
   useEffect(() => {
     const handleScroll = () => {
@@ -260,21 +256,6 @@ export default function Navbar() {
               </div>
               )}
 
-              {/* Clerk Authentication Integration */}
-              {showAdminAccess && (
-                <div className="flex items-center gap-1.5 pl-1 border-l border-primary-earth/10 ml-1">
-                  <ClerkErrorBoundary fallback={null}>
-                    <UserButton afterSignOutUrl="/" />
-                  </ClerkErrorBoundary>
-                  <Link 
-                    to="/admin/reviews" 
-                    className="p-1 hover:text-accent-gold transition-colors flex items-center gap-1"
-                    title="Admin Dashboard"
-                  >
-                    <Lock className="w-5 h-5 text-primary-earth/80" />
-                  </Link>
-                </div>
-              )}
             </div>
 
             {/* Centered Logo/Name */}

@@ -6,7 +6,6 @@ import { useProducts } from './context/ProductContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ShoppingBag, CheckCircle2, MessageCircle, Loader2, Printer, Clock, BadgeCheck, ChevronDown, Search } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import {  useUser  } from './lib/clerk';
 import { SITE_HOST } from './lib/siteUrl';
 import { trackPurchase } from './lib/pixel';
 import { Helmet } from 'react-helmet-async';

@@ -3,8 +3,6 @@ import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
 import App from "./App.tsx";
 import "./index.css";
-import { ClerkProvider } from "./lib/clerk";
-import { ClerkErrorBoundary } from "./components/ClerkErrorBoundary";
 import { prefetchAppInitialData } from "./lib/apiCache";
 
 // Kick off instant background prefetching for home and section endpoints
@@ -1147,29 +1145,10 @@ Object.defineProperty(window, "fetch", {
 // ==========================================
 // RENDER APPLICATION
 // ==========================================
-// clerkPubKey moved to lib/clerk.tsx
-
-const clerkPubKey = (import.meta as any).env?.VITE_CLERK_PUBLISHABLE_KEY || '';
-const isProductionKey = clerkPubKey.startsWith('pk_live_');
-const isWrongDomain = window.location.hostname !== 'bellauraoils.com' && window.location.hostname !== 'www.bellauraoils.com';
-
-if (isProductionKey && isWrongDomain) {
-  createRoot(document.getElementById("root")!).render(
-    <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'sans-serif' }}>
-      <h1 style={{ color: '#ef4444' }}>Clerk Configuration Error</h1>
-      <p>You are using a Clerk Production Key (pk_live_...) on a non-production domain.</p>
-      <p>Clerk restricts production keys to run ONLY on your primary domain (bellauraoils.com).</p>
-      <p>To test in this AI Studio preview environment, please update your environment variables to use your Clerk <b>Development Key</b> (pk_test_...).</p>
-    </div>
-  );
-} else {
-  createRoot(document.getElementById("root")!).render(
-    <StrictMode>
-      <ClerkProvider>
-        <HelmetProvider>
-          <App />
-        </HelmetProvider>
-      </ClerkProvider>
-    </StrictMode>,
-  );
-}
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <HelmetProvider>
+      <App />
+    </HelmetProvider>
+  </StrictMode>,
+);
