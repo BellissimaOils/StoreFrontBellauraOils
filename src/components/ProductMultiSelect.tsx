@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ChevronDown, X, Check, Search } from "lucide-react";
 
 interface ProductMultiSelectProps {

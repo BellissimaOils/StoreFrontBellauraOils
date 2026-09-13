@@ -175,19 +175,6 @@ export default function Navbar() {
                 </div>
                 )}
 
-                {/* Auth / Admin lock icon */}
-                {showAdminAccess && (
-                  <div className="flex items-center gap-2 pl-1.5 border-l border-primary-earth/10">
-                    <UserButton afterSignOutUrl="/" />
-                    <Link 
-                      to="/admin/reviews" 
-                      className="p-1 hover:text-accent-gold transition-colors"
-                      title="Admin Dashboard"
-                    >
-                      <Lock className="w-4.5 h-4.5 text-primary-earth/80" />
-                    </Link>
-                  </div>
-                )}
               </div>
 
               {/* Right side: Shopping Cart */}

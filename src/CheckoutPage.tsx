@@ -258,18 +258,9 @@ export default function CheckoutPage() {
   });
   const [addressError, setAddressError] = useState<string | null>(null);
 
-  const { isSignedIn: isClerkSignedIn, user: clerkUser } = useUser();
   const [isAdmin, setIsAdmin] = useState(false);
   const [aiText, setAiText] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
-
-  useEffect(() => {
-    if (isClerkSignedIn && (localStorage.getItem("adminToken") || localStorage.getItem("admin_token") || localStorage.getItem("sendit_token"))) {
-      setIsAdmin(true);
-    } else {
-      setIsAdmin(false);
-    }
-  }, [isClerkSignedIn]);
 
   const handleExtractAddress = async () => {
     if (!aiText.trim()) return;
