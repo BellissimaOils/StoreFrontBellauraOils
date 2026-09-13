@@ -24,6 +24,7 @@ import PixelTracker from "./components/PixelTracker";
 import FloatingCart from "./components/FloatingCart";
 import BackToTopButton from "./components/BackToTopButton";
 import Footer from "./components/Footer";
+import DebugBanner from "./components/DebugBanner";
 
 // ProductDetail is statically imported so direct product links render
 // instantly with top priority — no Suspense delay on direct visits.
@@ -108,6 +109,7 @@ export default function App() {
               </div>
               <FloatingCart />
               <BackToTopButton />
+              <DebugBanner />
             </div>
           </CartProvider>
         </ProductProvider>
