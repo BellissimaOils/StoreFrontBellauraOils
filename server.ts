@@ -28,7 +28,6 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-import { GoogleGenAI } from "@google/genai";
 import {
   isSafeUrl,
   formatNotificationTemplate,
@@ -393,7 +392,7 @@ const app: Promise<express.Express> = (async () => {
 })();
 
 // Dev server entry
-if (process.env.NODE_ENV !== "production") {
+if (!process.env.VERCEL && process.env.NODE_ENV !== "production") {
   app.then((server) => {
     const PORT = Number(process.env.PORT) || 3000;
     server.listen(PORT, () => {
