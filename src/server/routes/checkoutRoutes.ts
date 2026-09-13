@@ -565,14 +565,8 @@ export function createCheckoutRouter(state: CheckoutState) {
       };
     });
 
-    // Generate a unique review token for this order using the order number as the token
-    const reviewToken = await state.createToken(
-      `${customerFirstName} ${customerLastName}`.trim() || "Customer",
-      productNames,
-      orderNbr,
-      productRefs,
-    );
-    const reviewLink = `/review/${reviewToken}`;
+    // Review tokens are created strictly after admin confirms the order, not on checkout
+    const reviewLink = "";
 
     // Send to Telegram if configured
     const tgBotToken = (

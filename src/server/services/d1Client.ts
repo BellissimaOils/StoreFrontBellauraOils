@@ -940,14 +940,15 @@ export async function getD1VirtualToken(token: string): Promise<D1VirtualReviewT
       }
     }
 
-    // 3. Check if order status is cancelled or deleted
+    // 3. Check if order status is confirmed (review links are only active AFTER confirmation)
     const isCancelledOrRemoved =
       orderStatus.includes("cancel") ||
       orderStatus.includes("delete") ||
       orderStatus.includes("remove");
+    const isConfirmed = orderStatus.includes("confirm");
 
     let status: "pending" | "processing" | "submitted" = "pending";
-    if (isUsed || isCancelledOrRemoved) {
+    if (isUsed || isCancelledOrRemoved || !isConfirmed) {
       status = "submitted";
     }
 
