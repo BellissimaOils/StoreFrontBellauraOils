@@ -21,7 +21,16 @@ export default function DebugBanner() {
     setLoading(true);
     try {
       const res = await fetch("/api/diagnostics", { cache: "no-store" });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = {
+          success: false,
+          error: text || `HTTP ${res.status}: Non-JSON server response`,
+        };
+      }
       setDiag(data);
     } catch (err: any) {
       setDiag({
@@ -94,6 +103,11 @@ export default function DebugBanner() {
                   ? JSON.stringify(diag.error, null, 2)
                   : diag?.error || (products.length === 0 ? "Products returned: 0. Database query returned no rows or failed." : "Unknown error")}
               </div>
+              {(diag as any)?.stack && (
+                <pre className="mt-2 text-[10px] font-mono bg-black/70 p-2 rounded border border-red-900/50 text-red-300 max-h-40 overflow-auto whitespace-pre-wrap">
+                  {(diag as any).stack}
+                </pre>
+              )}
             </div>
           ) : (
             <div className="p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-800 text-emerald-300 flex items-center gap-2">

@@ -50,8 +50,12 @@ export default async function handler(req, res) {
     return app(req, res);
   } catch (error) {
     console.error("Vercel Serverless Function error:", error);
-    res.status(500).setHeader("Content-Type", "text/plain").send(
-      `Serverless Function Initialization Error:\n${error?.message || error}\n\nStack:\n${error?.stack || ""}`
+    res.status(500).setHeader("Content-Type", "application/json").send(
+      JSON.stringify({
+        success: false,
+        error: `Serverless Function Error: ${error?.message || error}`,
+        stack: error?.stack || "",
+      })
     );
   }
 }
