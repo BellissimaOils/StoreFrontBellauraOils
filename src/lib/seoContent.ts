@@ -188,28 +188,6 @@ const PREFIX_SEO: Array<{ prefix: string; entry: RouteSeoEntry }> = [
       },
     },
   },
-  {
-    prefix: "/admin",
-    entry: {
-      noindex: true,
-      title: {
-        ar: `لوحة التحكم | ${BRAND}`,
-        fr: `Tableau de Bord | ${BRAND}`,
-        en: `Admin Dashboard | ${BRAND}`,
-      },
-    },
-  },
-  {
-    prefix: "/onlyme",
-    entry: {
-      noindex: true,
-      title: {
-        ar: `لوحة التحكم | ${BRAND}`,
-        fr: `Tableau de Bord | ${BRAND}`,
-        en: `Admin Dashboard | ${BRAND}`,
-      },
-    },
-  },
 ];
 
 export function pickLocalized(text: LocalizedText | undefined, language: string): string {

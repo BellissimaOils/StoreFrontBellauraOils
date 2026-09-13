@@ -421,91 +421,6 @@ const app: Promise<express.Express> = (async () => {
   // FAQ — GET /faq
   server.use("/api", createFaqRouter(state as any));
 
-  // ── Diagnostics: GET /api/diagnostics (Live DB & Cloudflare connection report) ──
-  server.get("/api/diagnostics", async (req, res) => {
-    res.setHeader("Cache-Control", "no-store");
-    const rawAccountId = process.env.CLOUDFLARE_D1_ACCOUNT_ID;
-    const rawDatabaseId = process.env.CLOUDFLARE_D1_DATABASE_ID;
-    const rawApiToken = process.env.CLOUDFLARE_D1_API_TOKEN;
-
-    const accountId = sanitizeCredentials(rawAccountId);
-    const databaseId = sanitizeCredentials(rawDatabaseId);
-    const apiToken = sanitizeCredentials(rawApiToken);
-
-    const r2Account = process.env.CLOUDFLARE_R2_ACCOUNT_ID;
-    const r2Key = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
-    const r2Secret = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
-    const r2Bucket = process.env.CLOUDFLARE_R2_BUCKET_NAME;
-    const r2Url = process.env.CLOUDFLARE_R2_PUBLIC_URL;
-
-    const envStatus = {
-      CLOUDFLARE_D1_ACCOUNT_ID: accountId ? { set: true, length: accountId.length, masked: isMaskedValue(accountId) } : { set: false },
-      CLOUDFLARE_D1_DATABASE_ID: databaseId ? { set: true, length: databaseId.length, masked: isMaskedValue(databaseId) } : { set: false },
-      CLOUDFLARE_D1_API_TOKEN: apiToken ? { set: true, length: apiToken.length, masked: isMaskedValue(apiToken) } : { set: false },
-      CLOUDFLARE_R2_ACCOUNT_ID: r2Account ? { set: true } : { set: false },
-      CLOUDFLARE_R2_ACCESS_KEY_ID: r2Key ? { set: true } : { set: false },
-      CLOUDFLARE_R2_SECRET_ACCESS_KEY: r2Secret ? { set: true } : { set: false },
-      CLOUDFLARE_R2_BUCKET_NAME: r2Bucket ? { set: true, name: r2Bucket } : { set: false },
-      CLOUDFLARE_R2_PUBLIC_URL: r2Url ? { set: true, url: r2Url } : { set: false },
-    };
-
-    let d1LiveTest: any = null;
-    let cfError: any = null;
-
-    if (!accountId || !databaseId || !apiToken) {
-      cfError = "D1 credentials missing from process.env on this serverless instance.";
-    } else if (isMaskedValue(accountId) || isMaskedValue(databaseId) || isMaskedValue(apiToken)) {
-      cfError = "D1 credentials contain masked placeholder characters (•). Copy unmasked values from Cloudflare into Vercel.";
-    } else {
-      const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
-      try {
-        const startTime = Date.now();
-        const cfRes = await fetch(cloudflareUrl, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            sql: "SELECT count(*) as count FROM products; SELECT count(*) as count FROM sections_management; SELECT count(*) as count FROM homepage_sections;",
-          }),
-        });
-        const durationMs = Date.now() - startTime;
-        const cfJson: any = await cfRes.json().catch((e) => ({ error: e.message }));
-
-        d1LiveTest = {
-          httpStatus: cfRes.status,
-          durationMs,
-          success: cfJson.success,
-          result: cfJson.result,
-          errors: cfJson.errors,
-          messages: cfJson.messages,
-        };
-
-        if (!cfRes.ok || !cfJson.success) {
-          cfError = cfJson.errors || `Cloudflare HTTP ${cfRes.status}`;
-        }
-      } catch (err: any) {
-        cfError = `D1 network fetch failed: ${err.message || err}`;
-        d1LiveTest = { fetchError: err.message || err, stack: err.stack };
-      }
-    }
-
-    res.json({
-      success: !cfError,
-      serverTime: new Date().toISOString(),
-      env: envStatus,
-      d1LiveTest,
-      error: cfError,
-      counts: {
-        inMemoryProducts: products.length,
-        inMemoryD1Products: d1_products.length,
-        inMemorySiteSections: siteSections.length,
-        inMemoryHomepageSections: homepageSections.length,
-      },
-    });
-  });
-
   // ── SEO: sitemap.xml, robots.txt, and pre-rendered HTML ─────────────
   server.use("/", createSeoRouter({
     getSections: () => siteSections,
@@ -549,13 +464,22 @@ const app: Promise<express.Express> = (async () => {
     }));
 
     // SPA fallback — all unknown paths serve HTML shell
-    server.use("*", (_req, res) => {
+    server.use("*", (req, res) => {
       const htmlPath = getHtmlShell();
-      if (htmlPath) {
-        res.sendFile(htmlPath);
-      } else {
-        res.status(404).send("Not found");
+      if (!htmlPath) {
+        return res.status(404).send("Not found");
       }
+      const sectionPaths = collectSectionPaths(siteSections, normalizeSectionLinkServer);
+      const productSlugs = collectProductSlugs(products, getProductSlug);
+      const pathKind = resolvePath(req.path, {
+        sectionPaths,
+        productSlugs,
+        dataReady: siteSections.length > 0 || products.length > 0,
+      });
+      if (pathKind === "not-found") {
+        res.status(404);
+      }
+      res.sendFile(htmlPath);
     });
   } else {
     // Dev: Vite handles the frontend on a separate port

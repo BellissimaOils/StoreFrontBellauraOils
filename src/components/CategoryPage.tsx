@@ -301,7 +301,7 @@ export default function CategoryPage() {
   // a real section or 404 — defer the not-found check until they arrive.
   // Products are available, so fall through and render what we have.
 
-  if (pathKind === "not-found") {
+  if (pathKind === "not-found" || pathKind === "private") {
     return <NotFoundPage variant="category" />;
   }
 

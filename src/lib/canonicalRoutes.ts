@@ -51,7 +51,7 @@ export const CANONICAL_CONTENT_PATHS = ["/", "/reviews", "/about", "/faq"] as co
  * It belongs here rather than in CANONICAL_CONTENT_PATHS: it should return 200
  * for the customers it's sent to, and stay out of search results.
  */
-export const PRIVATE_EXACT_PATHS = ["/checkout", "/onlyme", "/leave-a-review"] as const;
+export const PRIVATE_EXACT_PATHS = ["/checkout", "/leave-a-review"] as const;
 
 export type PathKind =
   /** A known static page. */
@@ -160,7 +160,6 @@ export function resolvePath(
   const { sectionPaths, productSlugs, dataReady = true } = opts;
 
   // --- Private but real -----------------------------------------------
-  if (p === "/admin" || p.startsWith("/admin/")) return "private";
   if (p.startsWith("/review/") && p.length > "/review/".length) return "private";
   if ((PRIVATE_EXACT_PATHS as readonly string[]).includes(p)) return "private";
 
