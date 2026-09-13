@@ -537,7 +537,7 @@ export default function LeaveReviewPage() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder={tr('كيف تريد أن يظهر اسمك', 'Comment souhaitez-vous apparaître', "How you'd like to appear")}
-                    className="w-full border-b border-primary-earth/30 py-3 bg-transparent focus:border-accent-gold focus:outline-none transition-colors duration-300 font-light placeholder:text-primary-earth/30"
+                    className="w-full border-2 border-purple-300 bg-[#f8f5fc] p-3.5 rounded-xl text-sm text-primary-earth focus:border-purple-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all duration-200 placeholder:text-purple-900/40 shadow-2xs"
                   />
                 </div>
 
