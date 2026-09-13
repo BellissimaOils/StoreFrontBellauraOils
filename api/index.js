@@ -8,7 +8,6 @@ import "express-rate-limit";
 import "dotenv";
 import "jsonwebtoken";
 import "@aws-sdk/client-s3";
-import "@google/genai";
 
 import fs from "fs";
 import path from "path";

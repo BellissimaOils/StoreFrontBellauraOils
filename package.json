@@ -11,13 +11,11 @@
     "lint": "tsc --noEmit"
   },
   "allowScripts": {
-    "@google/genai": true,
     "esbuild": true,
     "protobufjs": true
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1053.0",
-    "@google/genai": "^1.29.0",
     "@sentry/react": "^10.69.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",

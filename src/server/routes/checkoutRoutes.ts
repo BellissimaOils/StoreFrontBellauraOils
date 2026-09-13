@@ -1,6 +1,5 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
-import { GoogleGenAI } from "@google/genai";
 import { isMaskedValue, sanitizeCredentials } from "../utils/sqlUtils";
 import { formatNotificationTemplate, generateOrderNbr, generateUUID } from "../utils/idUtils";
 
@@ -799,70 +798,13 @@ ${numericDiscount ? `🎁 <b>Discount:</b> -${numericDiscount} DH\n` : ""}${coup
     // Respond now because Vercel halts execution after this response
     res.status(200).json(responsePayload);
 
-    // Run Gemini in the background to simulate asynchronous email sending
+    // Background simulation for email sending
     (async () => {
       try {
-        let useFallback = false;
-        let emailContent = "";
-
-        const rawKey = process.env.GEMINI_API_KEY
-          ? process.env.GEMINI_API_KEY.trim()
-          : "";
-        const isPlaceholderKey =
-          !rawKey ||
-          rawKey === "MY_GEMINI_API_KEY" ||
-          rawKey.startsWith("MY_") ||
-          rawKey.toLowerCase().includes("placeholder") ||
-          rawKey.toLowerCase().includes("dummy") ||
-          rawKey.includes("YOUR_") ||
-          rawKey.includes("masked");
-
-        if (isPlaceholderKey) {
-          useFallback = true;
-        } else {
-          try {
-            const ai = new GoogleGenAI({
-              apiKey: rawKey,
-              httpOptions: {
-                headers: {
-                  "User-Agent": "aistudio-build",
-                },
-              },
-            });
-
-            const prompt = `
-              Draft a beautiful, professional, and warm order confirmation email for a premium botanical store called "Bellaura Oils".
-              Customer Details: ${customerFirstName} ${customerLastName}
-              Order Items: ${productNames.join(", ")}
-              Total Amount: ${total}
-              
-              Important: Mention that they can leave a verified review using this unique, one-time link: http://localhost:3000${reviewLink}
-              
-              The tone should be consistent with a high-end wellness brand. Include a "Thank you" and a summary.
-            `;
-
-            const response = await ai.models.generateContent({
-              model: "gemini-3.5-flash",
-              contents: prompt,
-            });
-
-            emailContent = response.text || "";
-          } catch (apiError: any) {
-            console.warn(
-              "Gemini API key is invalid or not authorized. Falling back to clean simulated confirmation.",
-            );
-            useFallback = true;
-          }
-        }
-
-        if (useFallback) {
-          console.log("Using simulated output.");
-          emailContent = `Thank you for your order!\nView your order at http://localhost:3000${reviewLink}`;
-        }
-
-        console.log("--- SIMULATED EMAIL PREPARED ---");
+        const emailContent = `Thank you for your order, ${customerFirstName} ${customerLastName}!\nItems: ${productNames.join(", ")}\nTotal: ${total}\nReview link: ${reviewLink}`;
+        console.log("--- SIMULATED ORDER NOTIFICATION ---");
         console.log(emailContent);
-        console.log("---------------------------------------------------");
+        console.log("-----------------------------------");
         console.log(
           "-> UNIQUE REVIEW LINK PREVIEW:",
           `http://localhost:3000${reviewLink}`,
