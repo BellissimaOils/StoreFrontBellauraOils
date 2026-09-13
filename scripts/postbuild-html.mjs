@@ -35,10 +35,11 @@ if (!fs.existsSync(distDir)) {
 }
 
 if (fs.existsSync(from)) {
-  fs.renameSync(from, to);
-  console.log("[postbuild] dist/index.html -> dist/app.html (so / reaches the server)");
+  fs.copyFileSync(from, to);
+  console.log("[postbuild] copied dist/index.html to dist/app.html");
 } else if (fs.existsSync(to)) {
-  console.log("[postbuild] dist/app.html already present, nothing to do");
+  fs.copyFileSync(to, from);
+  console.log("[postbuild] copied dist/app.html to dist/index.html");
 } else {
   console.error(
     "[postbuild] neither dist/index.html nor dist/app.html exists — the build produced no HTML shell",

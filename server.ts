@@ -200,69 +200,115 @@ const { fetchEverythingFromD1, loadDb, saveDb } = createCoreDbService({
 // Shared state object passed to route factories
 // ---------------------------------------------------------------------------
 function buildState() {
-  return {
+  const stateObj: any = {
+    // Products
     getProducts: () => products,
     setProducts: (v: any[]) => { products = v; },
+    getD1Products: () => d1_products,
+    setD1Products: (v: any[]) => { d1_products = v; },
+    fetchProductsFromD1: () => fetchRealD1ProductsIfConfigured(),
+    fetchRealD1ProductsIfConfigured,
+    getD1ApiCacheProducts: () => d1ApiCache.products,
+    setD1ApiCacheProducts: (v: any) => { d1ApiCache.products = v; },
+    syncSqlToClassicProducts,
+    syncD1ToClassicProducts,
+    syncClassicToSqlProducts,
+    mapD1RowToProductSchema,
+    ensureProductsDataTablesExist,
+
+    // Orders
     getOrders: () => orders,
     setOrders: (v: any[]) => { orders = v; },
+    ensureD1OrdersTablesExist,
+
+    // Coupons
     getCoupons: () => coupons,
     setCoupons: (v: any[]) => { coupons = v; },
+    fetchCouponsFromD1: () => fetchRealD1CouponsIfConfigured(),
+    fetchRealD1CouponsIfConfigured,
+
+    // Countries
     getCountries: () => countries,
     setCountries: (v: any[]) => { countries = v; },
+    fetchCountriesFromD1: () => fetchRealD1CountriesIfConfigured(),
+    fetchRealD1CountriesIfConfigured,
+
+    // Cities
+    getCities: () => d1_cities,
+    setCities: (v: any[]) => { d1_cities = v; },
+    getD1Cities: () => d1_cities,
+    setD1Cities: (v: any[]) => { d1_cities = v; },
+    fetchCitiesFromD1: () => fetchRealD1CitiesIfConfigured(),
+    fetchRealD1CitiesIfConfigured,
+    autoSeedCityTable: autoSeedCityTableD1,
+    autoSeedCityTableD1,
+
+    // Sections
+    getSections: () => siteSections,
+    setSections: (v: any[]) => { siteSections = v; },
+    getHomepageSections: () => [] as any[],
+    setHomepageSections: (v: any[]) => {},
+    getLastDbLoadTime: () => 0,
+    setLastDbLoadTime: (t: number) => {},
+    getDbLoadCooldown: () => 10000,
+
+    // Reviews
     getReviews: () => reviews,
     setReviews: (v: any[]) => { reviews = v; },
     getReviewTokens: () => reviewTokens,
     setReviewTokens: (v: Map<string, ReviewToken>) => { reviewTokens = v; },
-    getUploadedImages: () => [] as string[],
-    setUploadedImages: () => {},
-    getR2Folders: () => [] as string[],
-    setR2Folders: () => {},
-    getD1Products: () => d1_products,
-    setD1Products: (v: any[]) => { d1_products = v; },
-    getD1Cities: () => d1_cities,
-    setD1Cities: (v: any[]) => { d1_cities = v; },
-    getStoreSettings: () => storeSettings,
-    setStoreSettings: (v: any) => { storeSettings = v; },
-    refreshStoreSettingsFromD1,
-    d1ApiCache,
-    D1_CACHE_TTL_MS,
+    getD1ApiCacheReviews: () => d1ApiCache.reviews,
+    setD1ApiCacheReviews: (v: any) => { d1ApiCache.reviews = v; },
+    invalidateReviewsCache: invalidateD1ReviewsCache,
     invalidateD1ReviewsCache,
+    getD1CacheTtlMs: () => D1_CACHE_TTL_MS,
+    D1_CACHE_TTL_MS,
     saveReviewsDb,
     persistReviewsDb,
-    syncSqlToClassicProducts,
-    syncD1ToClassicProducts,
-    syncClassicToSqlProducts,
-    fetchEverythingFromD1,
+    moveReviewImagesToDeleted: async () => null,
+    getD1VirtualToken,
+    reviewTokenLimiter: rateLimit({ windowMs: 60 * 1000, max: 10 }),
+    createToken: async () => "",
+
+    // Settings
+    getStoreSettings: () => storeSettings,
+    setStoreSettings: (v: any) => { storeSettings = v; },
+    refreshStoreSettings: refreshStoreSettingsFromD1,
+    refreshStoreSettingsFromD1,
+    updateD1Settings,
+
+    // Images / R2 (dummy / harmless for storefront)
+    getUploadedImages: () => [] as string[],
+    setUploadedImages: () => {},
+    getD1Images: () => [] as any[],
+    getR2Folders: () => [] as string[],
+    setR2Folders: () => {},
+    processBase64Image: async () => null,
+    getR2Credentials,
+    getR2Client,
+    isSameImageUrl,
+
+    // Db / D1 utils
     loadDb,
     saveDb,
-    getLastD1WriteError,
-    executeD1Query: executeRealD1QueryIfConfigured,
-    fetchRealD1ProductsIfConfigured,
-    fetchRealD1CountriesIfConfigured,
-    fetchRealD1CouponsIfConfigured,
-    fetchRealD1CitiesIfConfigured,
-    mapD1RowToProductSchema,
-    ensureProductsDataTablesExist,
-    ensureD1OrdersTablesExist,
-    autoSeedCityTableD1,
+    fetchEverythingFromD1,
     autoSeedD1Database,
-    getD1VirtualToken,
-    updateD1Settings,
+    executeD1Query: executeRealD1QueryIfConfigured,
+    getLastD1WriteError,
+    logD1ExecutionDetails,
     isMaskedValue,
     sanitizeCredentials,
-    logD1ExecutionDetails,
+
+    // Helpers
     isSafeUrl,
     formatNotificationTemplate,
     generateUUID,
     generateOrderNbr,
-    getR2Credentials,
-    getR2Client,
-    isSameImageUrl,
     normalizeSectionLinkServer,
     SITE_ORIGIN,
-    // Public rate limiter for review submissions
-    reviewTokenLimiter: rateLimit({ windowMs: 60 * 1000, max: 10 }),
+    d1ApiCache,
   };
+  return stateObj;
 }
 
 // ---------------------------------------------------------------------------
@@ -350,22 +396,37 @@ const app: Promise<express.Express> = (async () => {
 
   // ── SEO: sitemap.xml, robots.txt, and pre-rendered HTML ─────────────
   server.use("/", createSeoRouter({
+    getSections: () => siteSections,
+    getSiteSections: () => siteSections,
     getProducts: () => products,
     getD1Products: () => d1_products,
-    getSiteSections: () => siteSections,
-    getStoreSettings: () => storeSettings,
-    getCachedSeoIndexSync,
+    fetchD1Products: fetchRealD1ProductsIfConfigured,
     fetchRealD1ProductsIfConfigured,
     fetchSectionsForSitemap: () => fetchSectionsForSitemap(siteSections),
+    getStoreSettings: () => storeSettings,
+    getCachedSeoIndexSync,
     mapD1RowToProductSchema,
     SITE_ORIGIN,
   } as any));
 
   // ── Static files (Vite build output) ─────────────────────────────────
-  const distDir = path.join(process.cwd(), "dist");
-  const indexHtml = path.join(distDir, "index.html");
+  const distCandidates = [
+    path.join(process.cwd(), "dist"),
+    path.join(__dirname, "dist"),
+    path.join(__dirname, "../dist"),
+  ];
+  const distDir = distCandidates.find((d) => fs.existsSync(d));
 
-  if (fs.existsSync(distDir)) {
+  const getHtmlShell = (): string | null => {
+    if (!distDir) return null;
+    const candidates = [
+      path.join(distDir, "app.html"),
+      path.join(distDir, "index.html"),
+    ];
+    return candidates.find((p) => fs.existsSync(p)) || null;
+  };
+
+  if (distDir) {
     // Serve built assets with long-term caching for immutable chunks
     server.use(express.static(distDir, {
       setHeaders(res, filePath) {
@@ -375,10 +436,11 @@ const app: Promise<express.Express> = (async () => {
       },
     }));
 
-    // SPA fallback — all unknown paths serve index.html (SEO router handles meta injection)
+    // SPA fallback — all unknown paths serve HTML shell
     server.use("*", (_req, res) => {
-      if (fs.existsSync(indexHtml)) {
-        res.sendFile(indexHtml);
+      const htmlPath = getHtmlShell();
+      if (htmlPath) {
+        res.sendFile(htmlPath);
       } else {
         res.status(404).send("Not found");
       }
