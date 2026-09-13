@@ -157,6 +157,8 @@ const { syncSqlToClassicProducts, syncD1ToClassicProducts, syncClassicToSqlProdu
   });
 
 let siteSections: any[] = [];
+let homepageSections: any[] = [];
+let lastDbLoadTime = 0;
 
 const { fetchEverythingFromD1, loadDb, saveDb } = createCoreDbService({
   getReviewTokens: () => reviewTokens,
@@ -249,10 +251,10 @@ function buildState() {
     // Sections
     getSections: () => siteSections,
     setSections: (v: any[]) => { siteSections = v; },
-    getHomepageSections: () => [] as any[],
-    setHomepageSections: (v: any[]) => {},
-    getLastDbLoadTime: () => 0,
-    setLastDbLoadTime: (t: number) => {},
+    getHomepageSections: () => homepageSections,
+    setHomepageSections: (v: any[]) => { homepageSections = v; },
+    getLastDbLoadTime: () => lastDbLoadTime,
+    setLastDbLoadTime: (t: number) => { lastDbLoadTime = t; },
     getDbLoadCooldown: () => 10000,
 
     // Reviews
@@ -327,19 +329,11 @@ const app: Promise<express.Express> = (async () => {
     })
   );
 
-  // CORS — only allow the public storefront domain
-  const allowedOrigins = [
-    "https://www.bellauraoils.com",
-    "https://bellauraoils.com",
-    "http://localhost:5173",
-    "http://localhost:3000",
-  ];
+  // CORS — allow public storefront domain, localhost, and Vercel preview URLs
   server.use(
     cors({
-      origin: (origin, cb) => {
-        if (!origin || allowedOrigins.some((o) => origin.startsWith(o))) return cb(null, true);
-        cb(new Error("Not allowed by CORS"));
-      },
+      origin: true,
+      credentials: true,
     })
   );
 
@@ -364,6 +358,36 @@ const app: Promise<express.Express> = (async () => {
     if (d1Coupons) coupons = d1Coupons;
     const d1Cities = await fetchRealD1CitiesIfConfigured();
     if (d1Cities) d1_cities = d1Cities;
+
+    const accountId = sanitizeCredentials(process.env.CLOUDFLARE_D1_ACCOUNT_ID);
+    const databaseId = sanitizeCredentials(process.env.CLOUDFLARE_D1_DATABASE_ID);
+    const apiToken = sanitizeCredentials(process.env.CLOUDFLARE_D1_API_TOKEN);
+    if (accountId && databaseId && apiToken) {
+      const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
+      const [secRes, hpRes] = await Promise.allSettled([
+        fetch(cloudflareUrl, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ sql: "SELECT * FROM sections_management ORDER BY order_index ASC;" }),
+        }).then((r) => r.json()),
+        fetch(cloudflareUrl, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ sql: "SELECT * FROM homepage_sections ORDER BY order_index ASC;" }),
+        }).then((r) => r.json()),
+      ]);
+      if (secRes.status === "fulfilled" && secRes.value?.success) {
+        let rows = secRes.value.result?.[0]?.results || secRes.value.result?.results || [];
+        if (!Array.isArray(rows) && Array.isArray(secRes.value.result)) rows = secRes.value.result;
+        siteSections = rows;
+      }
+      if (hpRes.status === "fulfilled" && hpRes.value?.success) {
+        let rows = hpRes.value.result?.[0]?.results || hpRes.value.result?.results || [];
+        if (!Array.isArray(rows) && Array.isArray(hpRes.value.result)) rows = hpRes.value.result;
+        homepageSections = rows;
+      }
+      lastDbLoadTime = Date.now();
+    }
   } catch (e) {
     console.warn("[Storefront] D1 cold-start init failed:", e);
   }
