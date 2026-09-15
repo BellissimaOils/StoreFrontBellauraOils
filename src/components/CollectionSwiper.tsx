@@ -113,6 +113,10 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType !== 'mouse' || !scrollRef.current) return;
+    // Do not capture drag if target is a button or interactive child
+    if ((e.target as HTMLElement).closest('button, a, input, select, [role="button"]')) {
+      return;
+    }
     dragState.current = { down: true, startX: e.clientX, startScroll: scrollRef.current.scrollLeft, moved: false };
     setIsDragging(true);
     scrollRef.current.setPointerCapture(e.pointerId);
@@ -133,9 +137,13 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
       // Pointer capture may already have been released by the browser — harmless.
     }
   };
-  // Suppress the click-through on a card's link/button right after a real
-  // drag, so dragging the strip doesn't also navigate to a product page.
+  // Suppress the click-through on a card right after a real
+  // drag, so dragging the strip doesn't trigger clicks.
   const onClickCapture = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button, [role="button"]')) {
+      dragState.current.moved = false;
+      return;
+    }
     if (dragState.current.moved) {
       e.preventDefault();
       e.stopPropagation();
@@ -159,9 +167,17 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
     e.preventDefault();
     e.stopPropagation();
     if (product.isAvailable === false) return;
-    addToCart(product);
+    
+    // Normalize price string for CartContext
+    const priceNum = Math.round(parseFloat(String(product.price || "0").replace(/[^\d.]/g, "")) || 0);
+    const safeProduct = {
+      ...product,
+      price: `${priceNum} DH`,
+    };
+
+    addToCart(safeProduct);
     setAddedId(product.id);
-    setTimeout(() => setAddedId((current) => (current === product.id ? null : current)), 1200);
+    setTimeout(() => setAddedId((current) => (current === product.id ? null : current)), 1500);
   };
 
   if (loading) {
@@ -327,11 +343,12 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
                       />
                     )}
 
-                    {/* Quick-add slides up on hover (desktop) and stays gently
-                        visible on touch via the always-present bottom gradient. */}
-                    <div className="absolute inset-x-0 bottom-0 p-3 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
+                    {/* Quick-add slides up on hover (desktop) and stays visible and clickable */}
+                    <div className="absolute inset-x-0 bottom-0 p-3 z-20 opacity-95 sm:opacity-0 group-hover:opacity-100 translate-y-0 sm:translate-y-2 group-hover:translate-y-0 transition-all duration-300">
                       <button
                         type="button"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onTouchStart={(e) => e.stopPropagation()}
                         onClick={(e) => handleQuickAdd(e, pack)}
                         disabled={isOutOfStock}
                         aria-label={isAr ? 'أضف إلى السلة' : 'Add to cart'}

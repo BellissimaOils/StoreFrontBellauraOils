@@ -160,7 +160,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const totalItems = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
   
   const totalPriceVal = useMemo(() => cart.reduce((sum, item) => {
-    const price = parseFloat(item.price.replace(' DH', ''));
+    const rawPrice = item.price ? String(item.price).replace(/[^\d.]/g, '') : "0";
+    const price = parseFloat(rawPrice) || 0;
     return sum + (price * item.quantity);
   }, 0), [cart]);
 
