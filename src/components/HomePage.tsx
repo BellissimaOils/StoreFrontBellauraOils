@@ -39,7 +39,7 @@ const DEFAULT_HERO = {
   order_index: 0,
 };
 
-const ProgressiveImage = ({ src, alt, className, loading, fetchPriority, decoding }: any) => {
+const ProgressiveImage = ({ src, alt, className, imgClassName, wrapClassName, loading, fetchPriority, decoding }: any) => {
   const isEager = loading === "eager" || fetchPriority === "high";
   const [isLoaded, setIsLoaded] = React.useState(isEager);
   // A failed image must be removed, not revealed. onError used to call
@@ -56,8 +56,15 @@ const ProgressiveImage = ({ src, alt, className, loading, fetchPriority, decodin
     }
   }, [src]);
 
+  // wrapClassName targets the wrapper div (used for transform:scale zoom so
+  // it stays off the <img> element and doesn't interfere with object-position).
+  // imgClassName targets the <img> itself (object-fit / object-position).
+  // Falls back to className for callers that don't need the split.
+  const resolvedWrapClass = wrapClassName || "relative w-full h-full bg-background-soft overflow-hidden";
+  const resolvedImgClass = imgClassName || className || "";
+
   return (
-    <div className="relative w-full h-full bg-background-soft overflow-hidden">
+    <div className={`${resolvedWrapClass} overflow-hidden`}>
       {!isLoaded && !isEager && (
         <div className="absolute inset-0 bg-background-soft z-0" />
       )}
@@ -69,7 +76,7 @@ const ProgressiveImage = ({ src, alt, className, loading, fetchPriority, decodin
           // Empty alt is deliberate when the caller passes none: these are
           // decorative background images sitting behind real text.
           alt={alt || ""}
-          className={`${className} relative z-10 transition-opacity duration-300 ${
+          className={`${resolvedImgClass} relative z-10 transition-opacity duration-300 ${
             isLoaded || isEager ? "opacity-100" : "opacity-0"
           }`}
           referrerPolicy="no-referrer"
@@ -213,8 +220,13 @@ function HomePage() {
         // configured value is now a floor: the hero is at least that tall and
         // grows if the text needs more.
         `${sel}{min-height:${l.height}vh;}` +
-        `${sel} .${scope}-img{object-fit:${l.fit};object-position:${l.x}% ${l.y}%;` +
-        `transform:scale(${l.zoom / 100});transform-origin:${l.x}% ${l.y}%;}`;
+        // object-fit / object-position on the <img> only — they control which
+        // region of the photo is shown inside its box. transform lives on the
+        // wrapper div (.scope-wrap) instead: combining transform + object-position
+        // on the same element causes desktop browsers to evaluate object-position
+        // before the transform, making the focal-point sliders appear locked.
+        `${sel} .${scope}-img{object-fit:${l.fit};object-position:${l.x}% ${l.y}%;}` +
+        `${sel} .${scope}-wrap{transform:scale(${l.zoom / 100});transform-origin:${l.x}% ${l.y}%;}`;
       const heroCss =
         deviceCss(`.${scope}`, layout.mobile) +
         `@media (min-width:1024px){${deviceCss(`.${scope}`, layout.desktop)}}`;
@@ -275,7 +287,12 @@ function HomePage() {
               // broken image renders its alt — printed the whole marketing
               // sentence on screen whenever the photo failed to load.
               alt={hasOverlay ? "" : title || ""}
-              className={`w-full h-full ${scope}-img`}
+              // scope-img targets object-fit/object-position on the <img>;
+              // scope-wrap targets transform:scale on the ProgressiveImage
+              // wrapper div — split so they don't interact and break the
+              // focal-point positioning on desktop browsers.
+              imgClassName={`w-full h-full ${scope}-img`}
+              wrapClassName={`relative w-full h-full bg-background-soft ${scope}-wrap`}
               loading={isFirstImage ? "eager" : "lazy"}
               fetchPriority={isFirstImage ? "high" : "low"}
               decoding={isFirstImage ? "sync" : "async"}
