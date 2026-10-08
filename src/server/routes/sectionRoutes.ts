@@ -22,12 +22,13 @@ export function createSectionRouter(state: SectionsState) {
 
   // Public: sections list (used by navbar, category pages, SEO)
   router.get("/sections", async (_req, res) => {
-    res.setHeader("Cache-Control", "public, s-maxage=30, stale-while-revalidate=60");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
     res.setHeader("Vary", "Accept-Encoding");
     try {
       const now = Date.now();
-      const isStale = now - state.getLastDbLoadTime() > state.getDbLoadCooldown();
-      const isFirstLoad = state.getLastDbLoadTime() === 0;
+      const sections = state.getSections();
+      const isStale = !sections || sections.length === 0 || now - state.getLastDbLoadTime() > Math.min(state.getDbLoadCooldown(), 5000);
 
       if (isStale) {
         const accountId = sanitizeCredentials(process.env.CLOUDFLARE_D1_ACCOUNT_ID);
@@ -35,30 +36,23 @@ export function createSectionRouter(state: SectionsState) {
         const apiToken = sanitizeCredentials(process.env.CLOUDFLARE_D1_API_TOKEN);
 
         if (accountId && databaseId && apiToken) {
-          const fetchFromD1 = async () => {
-            try {
-              const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
-              const resp = await fetch(cloudflareUrl, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ sql: "SELECT * FROM sections_management ORDER BY order_index ASC;" }),
-              });
-              if (resp.ok) {
-                const data = await resp.json();
-                let rows = data.result?.[0]?.results || data.result?.results || [];
-                if (!Array.isArray(rows) && Array.isArray(data.result)) rows = data.result;
-                overlaySectionRows(rows, await getSeoIndex());
-                state.setSections(rows);
-                state.setLastDbLoadTime(Date.now());
-              }
-            } catch (err) {
-              console.error("Failed to background fetch sections:", err);
+          try {
+            const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
+            const resp = await fetch(cloudflareUrl, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ sql: "SELECT * FROM sections_management ORDER BY order_index ASC;" }),
+            });
+            if (resp.ok) {
+              const data = await resp.json();
+              let rows = data.result?.[0]?.results || data.result?.results || [];
+              if (!Array.isArray(rows) && Array.isArray(data.result)) rows = data.result;
+              overlaySectionRows(rows, await getSeoIndex());
+              state.setSections(rows);
+              state.setLastDbLoadTime(Date.now());
             }
-          };
-          if (isFirstLoad || state.getDbLoadCooldown() === 0) {
-            await fetchFromD1();
-          } else {
-            fetchFromD1();
+          } catch (err) {
+            console.error("Failed to fetch fresh sections from D1:", err);
           }
         }
       }
@@ -75,11 +69,12 @@ export function createSectionRouter(state: SectionsState) {
 
   // Public: homepage layout sections
   router.get("/homepage-sections", async (_req, res) => {
-    res.setHeader("Cache-Control", "public, s-maxage=30, stale-while-revalidate=60");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
     try {
       const now = Date.now();
-      const isStale = now - state.getLastDbLoadTime() > state.getDbLoadCooldown();
-      const isFirstLoad = state.getLastDbLoadTime() === 0;
+      const hpSections = state.getHomepageSections();
+      const isStale = !hpSections || hpSections.length === 0 || now - state.getLastDbLoadTime() > Math.min(state.getDbLoadCooldown(), 5000);
 
       if (isStale) {
         const accountId = sanitizeCredentials(process.env.CLOUDFLARE_D1_ACCOUNT_ID);
@@ -87,29 +82,22 @@ export function createSectionRouter(state: SectionsState) {
         const apiToken = sanitizeCredentials(process.env.CLOUDFLARE_D1_API_TOKEN);
 
         if (accountId && databaseId && apiToken) {
-          const fetchFromD1 = async () => {
-            try {
-              const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
-              const resp = await fetch(cloudflareUrl, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ sql: "SELECT * FROM homepage_sections ORDER BY order_index ASC;" }),
-              });
-              if (resp.ok) {
-                const data = await resp.json();
-                let rows = data.result?.[0]?.results || data.result?.results || [];
-                if (!Array.isArray(rows) && Array.isArray(data.result)) rows = data.result;
-                state.setHomepageSections(rows);
-                state.setLastDbLoadTime(Date.now());
-              }
-            } catch (err) {
-              console.error("Failed to background fetch homepage-sections:", err);
+          try {
+            const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
+            const resp = await fetch(cloudflareUrl, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ sql: "SELECT * FROM homepage_sections ORDER BY order_index ASC;" }),
+            });
+            if (resp.ok) {
+              const data = await resp.json();
+              let rows = data.result?.[0]?.results || data.result?.results || [];
+              if (!Array.isArray(rows) && Array.isArray(data.result)) rows = data.result;
+              state.setHomepageSections(rows);
+              state.setLastDbLoadTime(Date.now());
             }
-          };
-          if (isFirstLoad || state.getDbLoadCooldown() === 0) {
-            await fetchFromD1();
-          } else {
-            fetchFromD1();
+          } catch (err) {
+            console.error("Failed to fetch fresh homepage-sections from D1:", err);
           }
         }
       }
@@ -119,6 +107,7 @@ export function createSectionRouter(state: SectionsState) {
       return res.json({ success: false, message: e.message });
     }
   });
+
 
   return router;
 }

@@ -14,7 +14,9 @@ export function createCountryRouter(state: CountriesState) {
   const router = express.Router();
 
   router.get("/countries", async (_req, res) => {
-    res.setHeader("Cache-Control", "public, s-maxage=300, stale-while-revalidate=600");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Vary", "Accept-Encoding");
     try {
       const d1Countries = await state.fetchCountriesFromD1();
       if (d1Countries) state.setCountries(d1Countries);

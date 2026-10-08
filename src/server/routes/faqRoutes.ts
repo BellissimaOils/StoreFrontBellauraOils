@@ -97,7 +97,9 @@ export function createFaqRouter(_state: FaqState) {
 
   // Public: the questions the FAQ page renders
   router.get("/faq", async (_req, res) => {
-    res.setHeader("Cache-Control", "public, s-maxage=30, stale-while-revalidate=60");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Vary", "Accept-Encoding");
     try {
       await ensureFaqTable();
       res.json({ success: true, items: await readFaq() });

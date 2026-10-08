@@ -36,11 +36,9 @@ if (!fs.existsSync(distDir)) {
 
 if (fs.existsSync(from)) {
   fs.copyFileSync(from, to);
-  console.log("[postbuild] copied dist/index.html to dist/app.html");
-} else if (fs.existsSync(to)) {
-  fs.copyFileSync(to, from);
-  console.log("[postbuild] copied dist/app.html to dist/index.html");
-} else {
+  fs.unlinkSync(from);
+  console.log("[postbuild] moved dist/index.html to dist/app.html (index.html removed to prevent static bypass)");
+} else if (!fs.existsSync(to)) {
   console.error(
     "[postbuild] neither dist/index.html nor dist/app.html exists — the build produced no HTML shell",
   );

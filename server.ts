@@ -125,7 +125,7 @@ let d1_products: any[] = [];
 let d1_cities: any[] = [];
 let storeSettings: any = {};
 
-const STORE_SETTINGS_D1_TTL_MS = 10 * 1000;
+const STORE_SETTINGS_D1_TTL_MS = 5 * 1000;
 let lastStoreSettingsD1Read = 0;
 
 async function refreshStoreSettingsFromD1(force = false): Promise<void> {
@@ -135,12 +135,12 @@ async function refreshStoreSettingsFromD1(force = false): Promise<void> {
   if (fresh) storeSettings = fresh;
 }
 
-// D1 cache for products and reviews (30s TTL)
+// D1 cache for products and reviews (5s TTL)
 const d1ApiCache = {
   products: { data: null as any, timestamp: 0 },
   reviews:  { data: null as any, timestamp: 0 },
 };
-const D1_CACHE_TTL_MS = 30 * 1000;
+const D1_CACHE_TTL_MS = 5 * 1000;
 
 const invalidateD1ReviewsCache = () => {
   d1ApiCache.reviews.data = null;
@@ -245,7 +245,7 @@ function buildState() {
     setHomepageSections: (v: any[]) => { homepageSections = v; },
     getLastDbLoadTime: () => lastDbLoadTime,
     setLastDbLoadTime: (t: number) => { lastDbLoadTime = t; },
-    getDbLoadCooldown: () => 10000,
+    getDbLoadCooldown: () => 5000,
 
     // Reviews
     getReviews: () => reviews,
@@ -496,6 +496,7 @@ const app: Promise<express.Express> = (async () => {
       if (pathKind === "not-found") {
         res.status(404);
       }
+      res.setHeader("Cache-Control", "no-cache, must-revalidate");
       res.sendFile(htmlPath);
     });
   } else {

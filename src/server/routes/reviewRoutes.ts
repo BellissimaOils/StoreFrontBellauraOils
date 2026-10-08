@@ -232,9 +232,8 @@ export function createReviewRouter(state: ReviewsState) {
     }
 
     const cache = state.getD1ApiCacheReviews();
-    if (!cache.data || Date.now() - cache.timestamp > state.getD1CacheTtlMs()) {
-      if (!cache.data) await refreshReviewsCacheFromD1(accountId, databaseId, apiToken);
-      else refreshReviewsCacheFromD1(accountId, databaseId, apiToken);
+    if (!cache.data || Date.now() - cache.timestamp > Math.min(state.getD1CacheTtlMs(), 5000)) {
+      await refreshReviewsCacheFromD1(accountId, databaseId, apiToken);
     }
 
     const updated = state.getD1ApiCacheReviews();
@@ -250,7 +249,8 @@ export function createReviewRouter(state: ReviewsState) {
   // browser. Filtering and slicing happen over the already-cached full array,
   // so a page request costs no extra D1 round-trip.
   router.get("/reviews", async (req, res) => {
-    res.setHeader("Cache-Control", "public, s-maxage=30, stale-while-revalidate=60");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
     // The response body now depends on the query string, so it has to be part
     // of what a shared cache keys on. Express/CDNs key on the full URL
     // including the query, but Vary is still declared for correctness.
@@ -317,7 +317,8 @@ export function createReviewRouter(state: ReviewsState) {
   // because that is all the `products` column records; the client looks up its
   // product by id, then name, then English name.
   router.get("/reviews/summary", async (req, res) => {
-    res.setHeader("Cache-Control", "public, s-maxage=60, stale-while-revalidate=120");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
     res.setHeader("Vary", "Accept-Encoding");
 
     const buildSummary = (all: any[]) => {
@@ -807,6 +808,8 @@ export function createReviewRouter(state: ReviewsState) {
   // cannot submit anything once the admin flips this off, because the submit
   // route re-checks the same flag itself.
   router.get("/reviews/general/status", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
     await state.refreshStoreSettings?.();
     const enabled = state.getStoreSettings()?.generalReviewLinkEnabled === true;
     res.json({ success: true, enabled });

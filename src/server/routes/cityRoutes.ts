@@ -22,27 +22,23 @@ export function createCityRouter(state: CitiesState) {
   router.get("/cities", async (req, res) => {
     res.setHeader(
       "Cache-Control",
-      "public, s-maxage=60, stale-while-revalidate=300",
+      "no-store, no-cache, must-revalidate, max-age=0",
     );
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Vary", "Accept-Encoding");
 
     const now = Date.now();
     const d1_cities = state.getCities();
     const isMemoryEmpty = !d1_cities || d1_cities.length === 0;
 
-    if (isMemoryEmpty || now - lastCitiesSync > 60000) {
+    if (isMemoryEmpty || now - lastCitiesSync > 5000) {
       lastCitiesSync = now;
       try {
-        if (isMemoryEmpty) {
-          const d1List = await state.fetchCitiesFromD1();
-          if (d1List && d1List.length > 0) state.setCities(d1List);
-        } else {
-          state.fetchCitiesFromD1()
-            .then((d1List) => {
-              if (d1List && d1List.length > 0) state.setCities(d1List);
-            })
-            .catch((e) => console.error("Error in background fetch cities:", e));
-        }
-      } catch (e) {}
+        const d1List = await state.fetchCitiesFromD1();
+        if (d1List && d1List.length > 0) state.setCities(d1List);
+      } catch (e) {
+        console.error("Error fetching cities from D1:", e);
+      }
     }
 
     const cities = state.getCities();

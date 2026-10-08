@@ -25,22 +25,50 @@ export function createProductRouter(state: ProductsState) {
 
   // Public: single product's long-form text fields (description/benefits/etc)
   router.get("/products/:id/data", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Vary", "Accept-Encoding");
+
     await state.ensureProductsDataTablesExist();
     const { id } = req.params;
-    const products = state.getProducts();
-    const localProduct = products.find((p) => p.id === id || String(p.id) === id);
 
     const accountId = sanitizeCredentials(process.env.CLOUDFLARE_D1_ACCOUNT_ID);
     const databaseId = sanitizeCredentials(process.env.CLOUDFLARE_D1_DATABASE_ID);
     const apiToken = sanitizeCredentials(process.env.CLOUDFLARE_D1_API_TOKEN);
 
+    // Refresh state products if stale so localProduct is never an indefinitely stale boot snapshot
+    const D1_CACHE_TTL_MS = 5 * 1000;
+    const cache = state.getD1ApiCacheProducts();
+    if (accountId && databaseId && apiToken && !isMaskedValue(accountId)) {
+      if (!cache.data || Date.now() - cache.timestamp > D1_CACHE_TTL_MS) {
+        try {
+          const liveProducts = await state.fetchProductsFromD1();
+          if (liveProducts && liveProducts.length > 0) {
+            state.setD1Products(liveProducts);
+            state.syncD1ToClassicProducts();
+            const mapped = liveProducts.map(state.mapD1RowToProductSchema).filter(Boolean);
+            state.setD1ApiCacheProducts({ data: mapped, timestamp: Date.now() });
+          }
+        } catch (err) {
+          console.error("Failed to refresh products for product data route:", err);
+        }
+      }
+    }
+
+    const products = state.getProducts();
+    const localProduct = products.find((p) => String(p.id) === String(id) || p.slug === id);
+
     const targetNbr = !isNaN(Number(id))
       ? Number(id)
       : localProduct
-        ? products.findIndex((p) => p.id === localProduct.id) + 1
+        ? Number(localProduct.id) || products.findIndex((p) => p.id === localProduct.id) + 1
         : 0;
 
     if (!accountId || !databaseId || !apiToken || isMaskedValue(accountId)) {
+      const rawShowSize = localProduct?.show_size !== undefined ? localProduct.show_size : (localProduct as any)?.showSize;
+      const isShowSize = rawShowSize !== undefined && rawShowSize !== null
+        ? rawShowSize !== 0 && rawShowSize !== "0" && rawShowSize !== false
+        : true;
       return res.json({
         success: true,
         data: {
@@ -53,8 +81,8 @@ export function createProductRouter(state: ProductsState) {
           showBenefits: localProduct ? localProduct.showBenefits !== false : true,
           showUsage: localProduct ? localProduct.showUsage !== false : true,
           showIngredients: localProduct ? localProduct.showIngredients !== false : true,
-          show_size: localProduct ? localProduct.show_size !== 0 && localProduct.show_size !== "0" && localProduct.show_size !== false && (localProduct as any).showSize !== false : true,
-          showSize: localProduct ? localProduct.show_size !== 0 && localProduct.show_size !== "0" && localProduct.show_size !== false && (localProduct as any).showSize !== false : true,
+          show_size: isShowSize,
+          showSize: isShowSize,
         },
       });
     }
@@ -64,10 +92,10 @@ export function createProductRouter(state: ProductsState) {
       let sql: string;
       let sqlParams: any[];
       if (targetNbr) {
-        sql = `SELECT p.description, p.benefits, p.usage, p.ingredients, pd.tag FROM products p LEFT JOIN products_Data pd ON p.product_nbr = pd.product_id WHERE p.product_nbr = ?;`;
+        sql = `SELECT p.description, p.benefits, p.usage, p.ingredients, p.show_size, pd.tag FROM products p LEFT JOIN products_Data pd ON p.product_nbr = pd.product_id WHERE p.product_nbr = ?;`;
         sqlParams = [targetNbr];
       } else {
-        sql = `SELECT p.description, p.benefits, p.usage, p.ingredients, pd.tag FROM products p LEFT JOIN products_Data pd ON p.product_nbr = pd.product_id WHERE p.name LIKE ?;`;
+        sql = `SELECT p.description, p.benefits, p.usage, p.ingredients, p.show_size, pd.tag FROM products p LEFT JOIN products_Data pd ON p.product_nbr = pd.product_id WHERE p.name LIKE ?;`;
         sqlParams = [`%${localProduct?.name_en || id}%`];
       }
 
@@ -89,6 +117,13 @@ export function createProductRouter(state: ProductsState) {
         benefitsArr = localProduct.benefits;
       }
 
+      const rawShowSize = row?.show_size !== undefined
+        ? row.show_size
+        : (localProduct?.show_size !== undefined ? localProduct.show_size : (localProduct as any)?.showSize);
+      const isShowSize = rawShowSize !== undefined && rawShowSize !== null
+        ? rawShowSize !== 0 && rawShowSize !== "0" && rawShowSize !== false
+        : true;
+
       res.json({
         success: true,
         data: {
@@ -97,15 +132,27 @@ export function createProductRouter(state: ProductsState) {
           usage: row?.usage ?? localProduct?.usage ?? "",
           ingredients: row?.ingredients ?? localProduct?.ingredients ?? "",
           tag: row?.tag ?? localProduct?.tag ?? "",
-          showDescription: localProduct ? localProduct.showDescription !== false : true,
-          showBenefits: localProduct ? localProduct.showBenefits !== false : true,
-          showUsage: localProduct ? localProduct.showUsage !== false : true,
-          showIngredients: localProduct ? localProduct.showIngredients !== false : true,
-          show_size: localProduct ? localProduct.show_size !== 0 && localProduct.show_size !== "0" && localProduct.show_size !== false && (localProduct as any).showSize !== false : true,
-          showSize: localProduct ? localProduct.show_size !== 0 && localProduct.show_size !== "0" && localProduct.show_size !== false && (localProduct as any).showSize !== false : true,
+          showDescription: (row as any)?.show_description !== undefined
+            ? (row as any).show_description !== 0 && (row as any).show_description !== false
+            : (localProduct ? localProduct.showDescription !== false : true),
+          showBenefits: (row as any)?.show_benefits !== undefined
+            ? (row as any).show_benefits !== 0 && (row as any).show_benefits !== false
+            : (localProduct ? localProduct.showBenefits !== false : true),
+          showUsage: (row as any)?.show_usage !== undefined
+            ? (row as any).show_usage !== 0 && (row as any).show_usage !== false
+            : (localProduct ? localProduct.showUsage !== false : true),
+          showIngredients: (row as any)?.show_ingredients !== undefined
+            ? (row as any).show_ingredients !== 0 && (row as any).show_ingredients !== false
+            : (localProduct ? localProduct.showIngredients !== false : true),
+          show_size: isShowSize,
+          showSize: isShowSize,
         },
       });
     } catch (e: any) {
+      const rawShowSize = localProduct?.show_size !== undefined ? localProduct.show_size : (localProduct as any)?.showSize;
+      const isShowSize = rawShowSize !== undefined && rawShowSize !== null
+        ? rawShowSize !== 0 && rawShowSize !== "0" && rawShowSize !== false
+        : true;
       res.json({
         success: true,
         data: {
@@ -118,6 +165,8 @@ export function createProductRouter(state: ProductsState) {
           showBenefits: localProduct ? localProduct.showBenefits !== false : true,
           showUsage: localProduct ? localProduct.showUsage !== false : true,
           showIngredients: localProduct ? localProduct.showIngredients !== false : true,
+          show_size: isShowSize,
+          showSize: isShowSize,
         },
       });
     }
@@ -125,7 +174,8 @@ export function createProductRouter(state: ProductsState) {
 
   // Public: list products and packs for the storefront
   router.get("/products", async (_req, res) => {
-    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
     res.setHeader("Vary", "Accept-Encoding");
 
     const accountId = sanitizeCredentials(process.env.CLOUDFLARE_D1_ACCOUNT_ID);
@@ -172,7 +222,7 @@ export function createProductRouter(state: ProductsState) {
       return res.json({ success: true, products: safeProducts, storeSettings: await buildPublicSettings() });
     }
 
-    const D1_CACHE_TTL_MS = 30 * 1000;
+    const D1_CACHE_TTL_MS = 5 * 1000;
     const cache = state.getD1ApiCacheProducts();
     const needsRefresh = !cache.data || Date.now() - cache.timestamp > D1_CACHE_TTL_MS;
 
