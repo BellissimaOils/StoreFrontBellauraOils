@@ -28,6 +28,9 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+// Normalize and sanitize environment variables
+import "./src/server/utils/normalizeEnv";
+
 import {
   isSafeUrl,
   formatNotificationTemplate,
@@ -70,6 +73,7 @@ import { createCatalogSyncService } from "./src/server/services/catalogSync";
 import { createReviewsDbService } from "./src/server/services/reviewsDb";
 import { createCoreDbService } from "./src/server/services/coreDb";
 import { createProductSyncService } from "./src/server/services/productSync";
+import { createImageProcessingService } from "./src/server/services/imageProcessing";
 import { serveUnicodeStatic } from "./src/server/utils/staticFiles";
 import { getCachedSeoIndexSync } from "./src/server/services/seoSettings";
 import { createSeoRouter } from "./src/server/routes/seoRoutes";
@@ -180,30 +184,16 @@ const { fetchEverythingFromD1, loadDb, saveDb } = createCoreDbService({
   setCoupons: (v) => { coupons = v; },
   getStoreSettings: () => storeSettings,
   setStoreSettings: (v) => { storeSettings = v; },
+  setSections: (v) => { siteSections = v; },
   syncD1ToClassicProducts,
-  persistReviewsDb,
-  saveDb: async () => {},
-  DB_PATH,
-  getWritableDbPath,
-  isMaskedValue,
-  sanitizeCredentials,
-  logD1ExecutionDetails,
-  fetchRealD1ProductsIfConfigured,
-  mapD1RowToProductSchema,
-  ensureProductsDataTablesExist,
-  ensureD1OrdersTablesExist,
-  autoSeedCityTableD1,
-  autoSeedD1Database,
-  getD1VirtualToken,
-  fetchD1SettingsIfConfigured,
-  updateD1Settings,
-  getLastD1WriteError,
-  executeD1Query: executeRealD1QueryIfConfigured,
+  syncClassicToSqlProducts,
 });
 
 // ---------------------------------------------------------------------------
 // Shared state object passed to route factories
 // ---------------------------------------------------------------------------
+const { processBase64Image } = createImageProcessingService();
+
 function buildState() {
   const stateObj: any = {
     // Products
@@ -282,13 +272,13 @@ function buildState() {
     refreshStoreSettingsFromD1,
     updateD1Settings,
 
-    // Images / R2 (dummy / harmless for storefront)
+    // Images / R2 (scoped strictly to customer review photos)
     getUploadedImages: () => [] as string[],
     setUploadedImages: () => {},
     getD1Images: () => [] as any[],
-    getR2Folders: () => [] as string[],
+    getR2Folders: () => ["Reviews"] as string[],
     setR2Folders: () => {},
-    processBase64Image: async () => null,
+    processBase64Image,
     getR2Credentials,
     getR2Client,
     isSameImageUrl,
@@ -330,9 +320,34 @@ const app: Promise<express.Express> = (async () => {
   );
 
   // CORS — allow public storefront domain, localhost, and Vercel preview URLs
+  const allowedOrigins = [
+    process.env.STORE_URL,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+  ].filter(Boolean) as string[];
+
   server.use(
     cors({
-      origin: true,
+      origin: (origin, callback) => {
+        // Allow same-origin / non-browser requests
+        if (!origin) return callback(null, true);
+
+        // Allow localhost and local dev
+        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+          return callback(null, true);
+        }
+
+        // Allow Vercel preview & production deployments
+        if (/^https:\/\/[a-z0-9-]+(\.vercel\.app)$/i.test(origin)) {
+          return callback(null, true);
+        }
+
+        // Allow configured STORE_URL or explicit origins
+        if (allowedOrigins.some((o) => origin.toLowerCase() === o.toLowerCase())) {
+          return callback(null, true);
+        }
+
+        return callback(new Error("Not allowed by CORS"));
+      },
       credentials: true,
     })
   );
@@ -342,8 +357,10 @@ const app: Promise<express.Express> = (async () => {
   server.use("/api/", apiLimiter);
 
   server.use(compression());
+  // Scoped limit: allow up to 10mb for reviews to accommodate up to 5 compressed customer photos; 1mb for all other endpoints
+  server.use("/api/reviews", express.json({ limit: "10mb" }));
   server.use(express.json({ limit: "1mb" }));
-  server.use(express.urlencoded({ extended: true }));
+  server.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
   const state = buildState();
 
