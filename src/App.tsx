@@ -25,9 +25,10 @@ import FloatingCart from "./components/FloatingCart";
 import BackToTopButton from "./components/BackToTopButton";
 import Footer from "./components/Footer";
 
-// ProductDetail is statically imported so direct product links render
-// instantly with top priority — no Suspense delay on direct visits.
+// ProductDetail and NotFoundPage are statically imported so direct product links
+// and 404 fallbacks render instantly with top priority.
 import ProductDetail from "./components/ProductDetail";
+import NotFoundPage from "./components/NotFoundPage";
 
 // All other pages are lazy-loaded per route so each visitor only downloads
 // the code for the page they actually visit.
@@ -39,7 +40,6 @@ const AboutPage       = lazyRetry(() => import("./components/AboutPage"));
 const FaqPage         = lazyRetry(() => import("./components/FaqPage"));
 const LeaveReviewPage = lazyRetry(() => import("./components/LeaveReviewPage"));
 const GeneralReviewPage = lazyRetry(() => import("./components/GeneralReviewPage"));
-const NotFoundPage    = lazyRetry(() => import("./components/NotFoundPage"));
 
 // Premium loading spinner shown while lazy chunks are fetching
 function LuxuryLoader() {
