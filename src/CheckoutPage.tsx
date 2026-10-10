@@ -363,7 +363,8 @@ export default function CheckoutPage() {
   const selectedCountryData = countries.find(c => String(c.id) === formData.countryId);
   const isEurope = selectedCountryData?.is_europe;
   const isMorocco = selectedCountryData?.name_en?.toLowerCase() === 'morocco' || selectedCountryData?.name_ar === 'المغرب';
-  const isFreeShipping = finalPrice >= (storeSettings?.freeShippingThreshold || 500);
+  const freeShippingEnabled = storeSettings?.freeShippingEnabled !== false;
+  const isFreeShipping = freeShippingEnabled && finalPrice >= (storeSettings?.freeShippingThreshold || 500);
   const shippingCost = (selectedCityData && selectedCityData.price_mad) ? selectedCityData.price_mad : 0;
   const effectiveShippingCost = isEurope ? 0 : (isFreeShipping ? 0 : shippingCost);
   const checkoutTotalNumeric = finalPrice + effectiveShippingCost;
@@ -390,7 +391,7 @@ export default function CheckoutPage() {
     const orderHeader = orderNbr ? `*Order ID / N° de commande : ${orderNbr}*\n` : '';
     const originalSubtotal = subtotalPriceVal ? Math.round(parseFloat(subtotalPriceVal.replace(' DH', ''))) : parseFloat(total.replace(' DH', ''));
     const discount = discountAmount || 0;
-    const isFree = orderIsFreeShipping !== undefined ? orderIsFreeShipping : (originalSubtotal - discount) >= (storeSettings?.freeShippingThreshold || 500);
+    const isFree = orderIsFreeShipping !== undefined ? orderIsFreeShipping : (freeShippingEnabled && (originalSubtotal - discount) >= (storeSettings?.freeShippingThreshold || 500));
     const isEur = orderIsEurope !== undefined ? orderIsEurope : isEurope;
     const totalNum = Math.round(parseFloat(total.replace(' DH', '')));
     const fee = orderShippingFee !== undefined ? orderShippingFee : Math.max(0, totalNum - (originalSubtotal - discount));
@@ -571,7 +572,7 @@ ${t('cart.total')}: ${total} ${shippingLabel}
 
     const isLastOrderFreeShipping = lastOrder.isFreeShipping !== undefined
       ? lastOrder.isFreeShipping
-      : itemsNetTotal >= (storeSettings?.freeShippingThreshold || 500);
+      : (storeSettings?.freeShippingEnabled !== false && itemsNetTotal >= (storeSettings?.freeShippingThreshold || 500));
 
     const isLastOrderEurope = lastOrder.isEurope !== undefined ? lastOrder.isEurope : false;
 

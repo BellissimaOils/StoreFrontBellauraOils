@@ -360,8 +360,9 @@ export function createCheckoutRouter(state: CheckoutState) {
     }
 
     // Check free shipping threshold
+    const freeShippingEnabled = storeSettings?.freeShippingEnabled !== false;
     const freeShippingThreshold = storeSettings?.freeShippingThreshold || 500;
-    const isFreeShipping = computedSubtotal >= freeShippingThreshold;
+    const isFreeShipping = freeShippingEnabled && (computedSubtotal >= freeShippingThreshold);
     const shippingFee = isFreeShipping ? 0 : (storeSettings?.standardShippingFee || 35);
 
     // Server-side coupon verification — never trust client-supplied discountAmount.
@@ -685,7 +686,7 @@ export function createCheckoutRouter(state: CheckoutState) {
         const numericDiscount = discountAmount
           ? parseFloat(String(discountAmount).replace(/[^\d.]/g, ""))
           : 0;
-        const isFree = numericSubtotal - numericDiscount >= 500;
+        const isFree = (storeSettings?.freeShippingEnabled !== false) && (numericSubtotal - numericDiscount >= (storeSettings?.freeShippingThreshold || 500));
 
         let currentCountries = state.getCountries();
         if (!currentCountries || currentCountries.length === 0) {

@@ -107,8 +107,9 @@ export default function CartOverlay({ isOpen, onClose }: CartOverlayProps) {
 
   const isRtl = language === 'ar';
 
+  const freeShippingEnabled = storeSettings?.freeShippingEnabled !== false;
   const FREE_SHIPPING_THRESHOLD = storeSettings?.freeShippingThreshold || 500;
-  const isFreeShipping = finalPrice >= FREE_SHIPPING_THRESHOLD;
+  const isFreeShipping = freeShippingEnabled && finalPrice >= FREE_SHIPPING_THRESHOLD;
   const amountNeeded = FREE_SHIPPING_THRESHOLD - finalPrice;
   const progressPercent = Math.min(100, (finalPrice / FREE_SHIPPING_THRESHOLD) * 100);
 
@@ -148,7 +149,7 @@ export default function CartOverlay({ isOpen, onClose }: CartOverlayProps) {
             </div>
 
             {/* Dynamic Free Shipping Threshold Bar */}
-            {cart.length > 0 && (
+            {freeShippingEnabled && cart.length > 0 && (
               <div className="px-5 py-3.5 bg-accent-gold/5 border-b border-accent-gold/15 flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-xs font-bold text-primary-earth">
                   {isFreeShipping ? (
