@@ -28,6 +28,16 @@ function parseNavLinks(data: any, lang: string): NavLinkItem[] | null {
     }));
 }
 
+function isLiveNav(link: NavLinkItem): boolean {
+  const norm = (link.to || '').toLowerCase().replace(/\/+$/, '');
+  const lbl = (link.label || '').toLowerCase();
+  return norm === '/live' || lbl === 'live' || lbl.includes('live') || lbl.includes('لايف') || lbl.includes('بث');
+}
+
+function normalizePath(p: string): string {
+  return (p || '').toLowerCase().replace(/\/+$/, '') || '/';
+}
+
 export default function Navbar() {
   const { totalItems, isCartOpen, setIsCartOpen } = useCart();
   const { language, setLanguage, t } = useLanguage();
@@ -267,24 +277,48 @@ export default function Navbar() {
             <div className="flex items-center justify-end z-10 pl-4">
               <div className="flex items-center gap-3 lg:gap-4 xl:gap-7 flex-wrap lg:flex-nowrap justify-end">
                 {displayLinks.map((link) => {
-                  const isActive = location.pathname === link.to;
+                  const isActive = normalizePath(location.pathname) === normalizePath(link.to);
+                  const isLive = isLiveNav(link);
+                  // Keep configured text color or default Live red (#e11d48) all the time, including when clicked / active
+                  const effectiveColor = link.textColor || (isLive ? "#e11d48" : undefined);
+
                   return (
                     <Link 
                       key={link.to}
                       to={link.to} 
                       onMouseEnter={() => handlePrefetchRoute(link.to)}
                       onTouchStart={() => handlePrefetchRoute(link.to)}
-                      className={`relative text-[14px] xl:text-[15.5px] font-bold tracking-wider hover:text-accent-gold transition-colors duration-300 pb-2 whitespace-nowrap ${isActive ? 'text-accent-gold' : 'text-primary-earth/70'}`}
+                      className={`relative text-[14px] xl:text-[15.5px] font-bold tracking-wider transition-all duration-300 pb-2 whitespace-nowrap inline-flex items-center gap-1.5 ${
+                        isLive ? "live-nav-item" : "hover:opacity-85"
+                      } ${
+                        effectiveColor
+                          ? ""
+                          : isActive
+                          ? "text-accent-gold"
+                          : "text-primary-earth/70 hover:text-accent-gold"
+                      }`}
                       id={`desktop-nav-${link.to.replace(/\//g, '') || 'home'}`}
                       style={{
-                        color: !isActive && link.textColor ? link.textColor : undefined,
+                        color: effectiveColor || undefined,
                       }}
                     >
+                      {isLive && (
+                        <span className="relative flex h-2.5 w-2.5 items-center justify-center shrink-0">
+                          <span
+                            className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-80"
+                            style={{ backgroundColor: effectiveColor || "#f43f5e" }}
+                          />
+                          <span
+                            className="relative inline-flex rounded-full h-2 w-2 shadow-sm"
+                            style={{ backgroundColor: effectiveColor || "#e11d48" }}
+                          />
+                        </span>
+                      )}
                       <span>{link.label}</span>
                       {isActive && (
                         <span
-                          className="absolute bottom-0 left-0 right-0 h-[3px] bg-accent-gold rounded-full"
-                          style={{ backgroundColor: link.textColor || undefined }}
+                          className="absolute bottom-0 left-0 right-0 h-[3px] rounded-full"
+                          style={{ backgroundColor: effectiveColor || 'var(--color-accent-gold, #c89d5c)' }}
                         />
                       )}
                     </Link>
@@ -299,7 +333,11 @@ export default function Navbar() {
         <div id="mobile-navigation-bar" className="lg:hidden border-t border-primary-earth/5 bg-background-soft/80 backdrop-blur-md overflow-x-auto no-scrollbar">
           <div className="flex items-center px-4 h-14 min-w-max gap-8 justify-center">
             {navLinksToUse.map((link) => {
-              const isActive = location.pathname === link.to;
+              const isActive = normalizePath(location.pathname) === normalizePath(link.to);
+              const isLive = isLiveNav(link);
+              // Keep configured text color or default Live red (#e11d48) all the time, including when clicked / active
+              const effectiveColor = link.textColor || (isLive ? "#e11d48" : undefined);
+
               return (
                 <Link 
                   key={link.to}
@@ -307,13 +345,33 @@ export default function Navbar() {
                   onMouseEnter={() => handlePrefetchRoute(link.to)}
                   onTouchStart={() => handlePrefetchRoute(link.to)}
                   id={`mobile-nav-${link.to.replace(/\//g, '') || 'home'}`}
-                  className={`text-[15.5px] sm:text-[17px] font-bold tracking-wide hover:text-accent-gold transition-colors block py-3.5 ${isActive ? 'text-accent-gold border-b-2 border-accent-gold' : 'text-primary-earth'}`}
+                  className={`text-[15.5px] sm:text-[17px] font-bold tracking-wide transition-all inline-flex items-center gap-1.5 py-3.5 ${
+                    isLive ? "live-nav-item" : "hover:opacity-85"
+                  } ${isActive ? "border-b-2" : ""} ${
+                    effectiveColor
+                      ? ""
+                      : isActive
+                      ? "text-accent-gold border-accent-gold"
+                      : "text-primary-earth hover:text-accent-gold"
+                  }`}
                   style={{
-                    color: !isActive && link.textColor ? link.textColor : undefined,
-                    borderColor: isActive && link.textColor ? link.textColor : undefined,
+                    color: effectiveColor || undefined,
+                    borderColor: isActive ? (effectiveColor || 'var(--color-accent-gold, #c89d5c)') : 'transparent',
                   }}
                 >
-                  {link.label}
+                  {isLive && (
+                    <span className="relative flex h-2.5 w-2.5 items-center justify-center shrink-0">
+                      <span
+                        className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-80"
+                        style={{ backgroundColor: effectiveColor || "#f43f5e" }}
+                      />
+                      <span
+                        className="relative inline-flex rounded-full h-2 w-2 shadow-sm"
+                        style={{ backgroundColor: effectiveColor || "#e11d48" }}
+                      />
+                    </span>
+                  )}
+                  <span>{link.label}</span>
                 </Link>
               );
             })}

@@ -98,4 +98,22 @@
     scrollbar-width: thin;
     scrollbar-color: var(--color-primary-earth) transparent;
   }
+
+  @keyframes liveGlowPulse {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 1;
+      filter: drop-shadow(0 0 0px rgba(225, 29, 72, 0));
+    }
+    50% {
+      transform: scale(1.06);
+      opacity: 0.95;
+      filter: drop-shadow(0 0 6px rgba(225, 29, 72, 0.4));
+    }
+  }
+
+  .live-nav-item {
+    animation: liveGlowPulse 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
 }
+
