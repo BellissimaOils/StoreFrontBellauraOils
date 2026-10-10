@@ -103,8 +103,23 @@ export function prefetchAppInitialData() {
 export function clearCache(url?: string) {
   if (url) {
     cache.delete(url);
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      try {
+        sessionStorage.removeItem(`bellaura_cache_${url}`);
+      } catch {}
+    }
   } else {
     cache.clear();
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      try {
+        for (let i = sessionStorage.length - 1; i >= 0; i--) {
+          const key = sessionStorage.key(i);
+          if (key && key.startsWith("bellaura_cache_")) {
+            sessionStorage.removeItem(key);
+          }
+        }
+      } catch {}
+    }
   }
 }
 
