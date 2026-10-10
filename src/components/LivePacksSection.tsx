@@ -178,140 +178,98 @@ function LivePackCard({ pack, index }: { pack: LivePack; index: number; key?: Re
             </span>
           </div>
 
-          {productsList.length > 4 && (
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => scrollCarousel("left")}
-                aria-label="Previous product"
-                className="w-6 h-6 rounded-full bg-white border border-primary-earth/10 flex items-center justify-center text-primary-earth/70 hover:text-primary-earth hover:border-accent-gold transition-colors cursor-pointer"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
+          {productsList.length > 2 && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-primary-earth/40 sm:hidden">
+                {isAr ? "تمرير ↔" : "Swipe ↔"}
+              </span>
               <button
                 type="button"
                 onClick={() => scrollCarousel("right")}
-                aria-label="Next product"
-                className="w-6 h-6 rounded-full bg-white border border-primary-earth/10 flex items-center justify-center text-primary-earth/70 hover:text-primary-earth hover:border-accent-gold transition-colors cursor-pointer"
+                aria-label="Scroll right"
+                className="w-6 h-6 rounded-full bg-white border border-primary-earth/10 flex items-center justify-center text-primary-earth/70 hover:text-primary-earth hover:border-accent-gold transition-colors cursor-pointer shadow-2xs"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollCarousel("left")}
+                aria-label="Scroll left"
+                className="w-6 h-6 rounded-full bg-white border border-primary-earth/10 flex items-center justify-center text-primary-earth/70 hover:text-primary-earth hover:border-accent-gold transition-colors cursor-pointer shadow-2xs"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
               </button>
             </div>
           )}
         </div>
 
-        {/* Display Products: Clean responsive grid if <= 4 items, else Carousel */}
-        {productsList.length <= 4 ? (
-          <div
-            className={`grid grid-cols-2 ${
-              productsList.length === 3
-                ? "sm:grid-cols-3"
-                : productsList.length === 4
-                ? "sm:grid-cols-4"
-                : "sm:grid-cols-2"
-            } gap-2.5 sm:gap-3`}
-          >
-            {productsList.map((product, pIdx) => {
-              const rawPrice = product.price ? String(product.price).replace(/[^\d.]/g, "") : "";
-              const formattedPrice = rawPrice ? `${Math.round(parseFloat(rawPrice))} DH` : "";
+        {/* Display Products: Horizontal scroll on mobile (compact & scroll left-right), responsive layout on desktop */}
+        <div
+          ref={carouselRef}
+          className={`flex overflow-x-auto pb-2 pt-0.5 scroll-smooth snap-x snap-mandatory scrollbar-none gap-2.5 sm:gap-3 ${
+            productsList.length <= 4
+              ? `sm:grid ${
+                  productsList.length === 2
+                    ? "sm:grid-cols-2"
+                    : productsList.length === 3
+                    ? "sm:grid-cols-3"
+                    : "sm:grid-cols-4"
+                } sm:overflow-x-visible sm:w-full`
+              : ""
+          }`}
+          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+        >
+          {productsList.map((product, pIdx) => {
+            const rawPrice = product.price ? String(product.price).replace(/[^\d.]/g, "") : "";
+            const formattedPrice = rawPrice ? `${Math.round(parseFloat(rawPrice))} DH` : "";
 
-              return (
-                <div
-                  key={product.id || pIdx}
-                  className="bg-white rounded-xl border border-primary-earth/10 p-2.5 sm:p-3 flex flex-col justify-between shadow-2xs hover:border-accent-gold/30 transition-all"
-                >
-                  <div className="space-y-1.5">
-                    <div className="w-full aspect-square bg-[#0a0a0a] rounded-lg overflow-hidden flex items-center justify-center p-1.5 border border-primary-earth/5">
-                      {product.image ? (
-                        <img
-                          src={getOptimizedImageUrl(product.image, "eco", 180) || product.image}
-                          alt={product.name}
-                          loading="lazy"
-                          decoding="async"
-                          className="w-full h-full object-contain"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-white/30 text-xs">
-                          Bellaura
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <span className="text-[9px] font-bold text-accent-gold uppercase tracking-wider block">
-                        1x {product.category || (isAr ? "زيت طبيعي" : "Pure Oil")}
-                      </span>
-                      <h4 className="text-xs font-semibold text-primary-earth line-clamp-2 leading-snug">
-                        {product.name}
-                      </h4>
-                    </div>
+            return (
+              <div
+                key={product.id || pIdx}
+                className={`${
+                  productsList.length <= 4
+                    ? "w-[125px] sm:w-auto shrink-0 sm:shrink"
+                    : "w-[125px] sm:w-[155px] shrink-0"
+                } snap-start bg-white rounded-xl border border-primary-earth/10 p-2 sm:p-2.5 flex flex-col justify-between shadow-2xs hover:border-accent-gold/40 hover:shadow-xs transition-all`}
+              >
+                <div className="space-y-1.5">
+                  <div className="w-full aspect-square bg-[#0a0a0a] rounded-lg overflow-hidden flex items-center justify-center p-1 border border-primary-earth/5">
+                    {product.image ? (
+                      <img
+                        src={getOptimizedImageUrl(product.image, "eco", 180) || product.image}
+                        alt={product.name}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-contain"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-white/30 text-xs">
+                        Bellaura
+                      </div>
+                    )}
                   </div>
 
-                  {formattedPrice && (
-                    <div className="pt-1.5 border-t border-primary-earth/5 mt-1.5 flex items-center justify-between text-[10px] text-primary-earth/60">
-                      <span>{isAr ? "السعر الفردي:" : "Single:"}</span>
-                      <span className="font-mono font-medium line-through">{formattedPrice}</span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div
-            ref={carouselRef}
-            className="flex gap-2.5 sm:gap-3 overflow-x-auto pb-1 pt-0.5 scroll-smooth snap-x snap-mandatory no-scrollbar"
-            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-          >
-            {productsList.map((product, pIdx) => {
-              const rawPrice = product.price ? String(product.price).replace(/[^\d.]/g, "") : "";
-              const formattedPrice = rawPrice ? `${Math.round(parseFloat(rawPrice))} DH` : "";
-
-              return (
-                <div
-                  key={product.id || pIdx}
-                  className="w-[140px] sm:w-[160px] shrink-0 snap-start bg-white rounded-xl border border-primary-earth/10 p-2.5 flex flex-col justify-between shadow-2xs hover:shadow-sm transition-shadow"
-                >
-                  <div className="space-y-1.5">
-                    <div className="w-full aspect-square bg-[#0a0a0a] rounded-lg overflow-hidden flex items-center justify-center p-1.5 border border-primary-earth/5">
-                      {product.image ? (
-                        <img
-                          src={getOptimizedImageUrl(product.image, "eco", 180) || product.image}
-                          alt={product.name}
-                          loading="lazy"
-                          decoding="async"
-                          className="w-full h-full object-contain"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-white/30 text-xs">
-                          Bellaura
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <span className="text-[9px] font-bold text-accent-gold uppercase tracking-wider block">
-                        1x {product.category || (isAr ? "زيت طبيعي" : "Pure Oil")}
-                      </span>
-                      <h4 className="text-xs font-semibold text-primary-earth line-clamp-2 leading-snug">
-                        {product.name}
-                      </h4>
-                    </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-accent-gold uppercase tracking-wider block">
+                      1x {product.category || (isAr ? "زيت طبيعي" : "Pure Oil")}
+                    </span>
+                    <h4 className="text-[11px] sm:text-xs font-semibold text-primary-earth line-clamp-2 leading-snug">
+                      {product.name}
+                    </h4>
                   </div>
-
-                  {formattedPrice && (
-                    <div className="pt-1.5 border-t border-primary-earth/5 mt-1.5 flex items-center justify-between text-[10px] text-primary-earth/60">
-                      <span>{isAr ? "السعر الفردي:" : "Single:"}</span>
-                      <span className="font-mono font-medium line-through">{formattedPrice}</span>
-                    </div>
-                  )}
                 </div>
-              );
-            })}
-          </div>
-        )}
+
+                {formattedPrice && (
+                  <div className="pt-1.5 border-t border-primary-earth/5 mt-1.5 flex items-center justify-between text-[10px] text-primary-earth/60">
+                    <span>{isAr ? "السعر الفردي:" : "Single:"}</span>
+                    <span className="font-mono font-medium line-through">{formattedPrice}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Pack Bottom Pricing & CTA */}
