@@ -85,6 +85,7 @@ import { createCountryRouter } from "./src/server/routes/countryRoutes";
 import { createCouponRouter } from "./src/server/routes/couponRoutes";
 import { createFaqRouter } from "./src/server/routes/faqRoutes";
 import { createCheckoutRouter } from "./src/server/routes/checkoutRoutes";
+import { createLivePackRouter } from "./src/server/routes/livePackRoutes";
 import { resolvePageSeo } from "./src/lib/seoContent";
 import { SITE_ORIGIN, absoluteUrl } from "./src/lib/siteUrl";
 import {
@@ -437,6 +438,9 @@ const app: Promise<express.Express> = (async () => {
 
   // FAQ — GET /faq
   server.use("/api", createFaqRouter(state as any));
+
+  // Live Packs — GET /live-packs
+  server.use("/api", createLivePackRouter(state as any));
 
   // ── SEO: sitemap.xml, robots.txt, and pre-rendered HTML ─────────────
   server.use("/", createSeoRouter({

@@ -291,8 +291,31 @@ export default function CartOverlay({ isOpen, onClose }: CartOverlayProps) {
                     </div>
                     <div className="flex-grow flex flex-col justify-between h-full min-h-[72px]">
                       <div>
+                        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                          {item.isLivePack && (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-red-600 text-white tracking-wider flex items-center gap-1 shrink-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                              LIVE PACK
+                            </span>
+                          )}
+                          <p className="text-xs text-primary-earth/50 uppercase tracking-widest">{item.category}</p>
+                        </div>
                         <h3 className="text-base font-semibold text-primary-earth leading-snug line-clamp-2">{item.name}</h3>
-                        <p className="text-xs text-primary-earth/50 uppercase tracking-widest mt-1">{item.category}</p>
+                        {item.isLivePack && item.includedProducts && item.includedProducts.length > 0 && (
+                          <div className="mt-2 text-[11px] text-primary-earth/70 bg-[#faf8f5] p-2 rounded-lg border border-primary-earth/10">
+                            <span className="font-bold text-[10px] text-accent-gold block mb-1">
+                              {language === 'ar' ? 'محتويات الباقة:' : 'Pack contents:'}
+                            </span>
+                            <ul className="space-y-0.5">
+                              {item.includedProducts.map((p, idx) => (
+                                <li key={idx} className="flex items-center gap-1.5 text-[10px]">
+                                  <span className="w-1 h-1 rounded-full bg-accent-gold shrink-0" />
+                                  <span className="truncate">1x {p.name}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </div>
                       <div className="flex justify-between items-center mt-2 gap-2">
                         <div className="flex items-center gap-3 border border-primary-earth/10 px-2 py-1 rounded bg-white flex-shrink-0">

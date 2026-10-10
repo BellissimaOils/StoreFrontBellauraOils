@@ -1397,8 +1397,21 @@ ${t('cart.total')}: ${total} ${shippingLabel}
                       {item.image && <img referrerPolicy="no-referrer" src={item.image || undefined} alt={item.name} loading="lazy" decoding="async" className="w-full h-full object-contain mix-blend-multiply" />}
                     </div>
                     <div>
-                      <p className="font-medium">{item.name}</p>
+                      <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                        {item.isLivePack && (
+                          <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-red-600 text-white tracking-wider flex items-center gap-1">
+                            <span className="w-1 h-1 rounded-full bg-white animate-pulse" />
+                            LIVE PACK
+                          </span>
+                        )}
+                        <p className="font-medium text-primary-earth">{item.name}</p>
+                      </div>
                       <p className="text-primary-earth/40 text-xs">{t('cart.qty')}: {item.quantity}</p>
+                      {item.isLivePack && item.includedProducts && item.includedProducts.length > 0 && (
+                        <div className="mt-1 text-[10px] text-primary-earth/60 font-light">
+                          {item.includedProducts.map((p) => `1x ${p.name}`).join(" • ")}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="font-sans text-right text-xs sm:text-sm text-primary-earth whitespace-nowrap" dir="ltr">

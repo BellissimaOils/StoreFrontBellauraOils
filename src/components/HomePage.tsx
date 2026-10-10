@@ -26,6 +26,8 @@ import { parseParagraphConfig } from "../lib/paragraphConfig";
 import { SITE_ORIGIN, absoluteUrl } from "../lib/siteUrl";
 
 import CollectionSwiper from "./CollectionSwiper";
+import LivePacksSection from "./LivePacksSection";
+import { LivePack } from "../types";
 
 const DEFAULT_HOME_HERO_IMAGE = "https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/home.jpg";
 
@@ -144,6 +146,20 @@ function HomePage() {
         if (sections.length === 0) setSections([DEFAULT_HERO]);
         setHasFetched(true);
       });
+  }, []);
+
+  const [livePacks, setLivePacks] = React.useState<LivePack[]>([]);
+
+  React.useEffect(() => {
+    fetchWithCache("/api/live-packs")
+      .then((data) => {
+        if (data && data.success && data.enabled && Array.isArray(data.packs)) {
+          setLivePacks(data.packs);
+        } else {
+          setLivePacks([]);
+        }
+      })
+      .catch(() => setLivePacks([]));
   }, []);
 
   const renderSection = (s: any, idx: number) => {
@@ -269,9 +285,9 @@ function HomePage() {
       const animStagger = overlay.anim_stagger / 1000;
 
       return (
-        <section
-          key={s.id || idx}
-          className={`${scope} relative flex overflow-hidden bg-background-soft`}
+        <React.Fragment key={s.id || idx}>
+          <section
+            className={`${scope} relative flex overflow-hidden bg-background-soft`}
           // items-center was hardcoded here; the overlay's configured vertical
           // placement (top/middle/bottom) now drives it, because the overlay is
           // a flow child rather than an absolutely-positioned layer.
@@ -419,6 +435,8 @@ function HomePage() {
           <div className="absolute right-12 bottom-0 top-0 w-px bg-primary-earth/10 hidden lg:block z-10" />
           <div className="absolute right-0 bottom-12 w-24 h-px bg-primary-earth/10 hidden lg:block z-10" />
         </section>
+        {livePacks.length > 0 && <LivePacksSection packs={livePacks} />}
+      </React.Fragment>
       );
     }
 
@@ -690,6 +708,9 @@ function HomePage() {
         </div>
       ) : sections.length > 0 ? (
         <div className="space-y-0">
+          {!sections.some((s) => s.type === "hero") && livePacks.length > 0 && (
+            <LivePacksSection packs={livePacks} />
+          )}
           {sections.map((s, idx) => renderSection(s, idx))}
         </div>
       ) : hasFetched ? (

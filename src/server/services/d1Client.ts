@@ -1738,3 +1738,82 @@ export async function autoSeedD1Database(
     return false;
   }
 }
+
+/**
+ * Executes a SELECT query against Cloudflare D1 and returns an array of result row objects,
+ * or null if D1 is not configured or query fails.
+ */
+export async function queryRealD1Rows(query: string, params: any[] = []): Promise<any[] | null> {
+  const rawAccountId = process.env.CLOUDFLARE_D1_ACCOUNT_ID;
+  const rawDatabaseId = process.env.CLOUDFLARE_D1_DATABASE_ID;
+  const rawApiToken = process.env.CLOUDFLARE_D1_API_TOKEN;
+
+  const accountId = sanitizeCredentials(rawAccountId);
+  const databaseId = sanitizeCredentials(rawDatabaseId);
+  const apiToken = sanitizeCredentials(rawApiToken);
+
+  if (!accountId || !databaseId || !apiToken) return null;
+  if (isMaskedValue(accountId) || isMaskedValue(databaseId) || isMaskedValue(apiToken)) return null;
+
+  try {
+    const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
+    const requestHeaders = {
+      Authorization: `Bearer ${apiToken}`,
+      "Content-Type": "application/json",
+    };
+
+    const cfResponse = await fetch(cloudflareUrl, {
+      method: "POST",
+      headers: requestHeaders,
+      body: JSON.stringify({ sql: query, params }),
+    });
+    const data = await cfResponse.json();
+    if (cfResponse.ok && data.success) {
+      const results = data.result?.[0]?.results || data.result?.results || [];
+      return Array.isArray(results) ? results : [];
+    }
+    return null;
+  } catch (err) {
+    console.error("D1 SELECT query failed:", err);
+    return null;
+  }
+}
+
+/**
+ * Ensures the live_packs table exists with only the strictly required fields.
+ * No video fields, created_at, or updated_at.
+ */
+export async function ensureLivePacksTableExists(): Promise<boolean> {
+  const sql = `CREATE TABLE IF NOT EXISTS live_packs (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    product_ids TEXT NOT NULL,
+    regular_price REAL NOT NULL,
+    live_price REAL NOT NULL,
+    status TEXT NOT NULL DEFAULT 'visible',
+    display_order INTEGER NOT NULL DEFAULT 0
+  );`;
+  return await executeRealD1QueryIfConfigured(sql);
+}
+
+/**
+ * Fetches visible Live Packs for public storefront.
+ */
+export async function fetchVisibleLivePacksFromD1(): Promise<any[]> {
+  await ensureLivePacksTableExists();
+  const sql = `SELECT * FROM live_packs WHERE status = 'visible' ORDER BY display_order ASC;`;
+  const rows = await queryRealD1Rows(sql, []);
+  return rows || [];
+}
+
+/**
+ * Fetches a single Live Pack by ID for checkout validation.
+ */
+export async function fetchLivePackByIdD1(id: string): Promise<any | null> {
+  await ensureLivePacksTableExists();
+  const sql = `SELECT * FROM live_packs WHERE id = ? LIMIT 1;`;
+  const rows = await queryRealD1Rows(sql, [id]);
+  return rows && rows.length > 0 ? rows[0] : null;
+}
+

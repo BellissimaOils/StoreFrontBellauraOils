@@ -2,6 +2,7 @@ export interface Product {
   id: string;
   name: string;
   name_en?: string;
+  name_ar?: string;
   category: string;
   price: string;
   image: string;
@@ -53,8 +54,31 @@ export interface Product {
   packProductIds?: string[];
 }
 
+export interface LivePack {
+  id: string;
+  name: string;
+  description: string;
+  product_ids: string[];
+  regular_price: number;
+  live_price: number;
+  status: "visible" | "hidden";
+  display_order: number;
+  products?: Product[];
+}
+
 export interface CartItem extends Product {
   quantity: number;
+  isLivePack?: boolean;
+  livePackId?: string;
+  includedProducts?: Array<{
+    id: string;
+    name: string;
+    name_en?: string;
+    name_ar?: string;
+    image?: string;
+    price?: string;
+    volume?: string;
+  }>;
 }
 
 export interface Category {

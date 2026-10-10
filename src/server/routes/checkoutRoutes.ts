@@ -2,6 +2,7 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import { isMaskedValue, sanitizeCredentials } from "../utils/sqlUtils";
 import { formatNotificationTemplate, generateOrderNbr, generateUUID } from "../utils/idUtils";
+import { fetchLivePackByIdD1 } from "../services/d1Client";
 
 /**
  * Dedicated rate limiter for POST /checkout (10 requests / 15 minutes / IP)
@@ -79,6 +80,7 @@ interface CheckoutState {
   getCoupons: () => any[];
   getOrders: () => any[];
   getStoreSettings: () => any;
+  refreshStoreSettings?: (force?: boolean) => Promise<void>;
   getCountries: () => any[];
   setCountries: (v: any[]) => void;
   setD1Products: (v: any[]) => void;
@@ -189,7 +191,21 @@ export function createCheckoutRouter(state: CheckoutState) {
     });
 
     const orders = state.getOrders();
+    await state.refreshStoreSettings?.();
     const storeSettings = state.getStoreSettings();
+
+    // Check if any cart item is a Live Pack
+    const hasLivePack = (Array.isArray(items) ? items : []).some(
+      (item: any) => item?.isLivePack || item?.livePackId || String(item?.id || "").startsWith("live_pack_"),
+    );
+    if (hasLivePack && storeSettings?.live_packs_enabled !== true) {
+      releasePendingKey();
+      return res.status(400).json({
+        success: false,
+        message: "عروض اللايف متوقفة حالياً (Live packs are currently closed).",
+        messageAr: "عروض اللايف متوقفة حالياً، يرجى إزالة الباقة من السلة للمتابعة.",
+      });
+    }
 
     // Make sure we actually have an authoritative product catalog in memory
     // before pricing anything.
@@ -227,42 +243,96 @@ export function createCheckoutRouter(state: CheckoutState) {
     // Server-side price recalculation — never trust client-supplied total/subtotal
     let computedSubtotal = 0;
     const unresolvedItems: string[] = [];
-    const validatedItems = (Array.isArray(items) ? items : []).map((item: any) => {
-      const quantity = Math.max(1, parseInt(String(item.quantity || 1), 10));
-      // Find matching product in memory / D1 catalog
-      const match = (products || []).find(
-        (p: any) =>
-          String(p.id) === String(item.id || item.product_nbr) ||
-          String(p.product_nbr) === String(item.product_nbr || item.id) ||
-          (p.name && item.name && p.name.toLowerCase() === item.name.toLowerCase())
-      );
+    const rawValidatedItems = await Promise.all(
+      (Array.isArray(items) ? items : []).map(async (item: any) => {
+        const quantity = Math.max(1, parseInt(String(item.quantity || 1), 10));
+        const isPack = item?.isLivePack || item?.livePackId || String(item?.id || "").startsWith("live_pack_");
 
-      let itemPrice = 0;
-      if (match) {
-        const rawPriceStr = typeof match.price === "string" ? match.price.replace(/[^\d.]/g, "") : String(match.price);
-        itemPrice = parseFloat(rawPriceStr) || 0;
-      } else if (!catalogAvailable && ALLOW_UNVERIFIED_PRICES) {
-        // Opt-in outage path, OFF by default. See the constant's comment: this
-        // accepts a price the customer's own browser supplied, so it is only
-        // reachable when an operator has explicitly decided that taking orders
-        // during a catalogue outage matters more than pricing them correctly.
-        itemPrice = parseFloat(String(item.price).replace(/[^\d.]/g, "")) || 0;
-        console.error(
-          `[Checkout][UNVERIFIED PRICE] Product catalog unavailable — accepting client-supplied price ${itemPrice} for "${item.name || item.product_name || item.id}". Verify this order manually before dispatching.`,
+        if (isPack) {
+          const rawPackId = item.livePackId || String(item.id || "").replace(/^live_pack_/, "");
+          let pack: any = null;
+          try {
+            pack = await fetchLivePackByIdD1(rawPackId);
+          } catch (packErr) {
+            console.error(`[Checkout] Failed fetching Live Pack ${rawPackId} from D1:`, packErr);
+          }
+
+          if (!pack || pack.status !== "visible") {
+            unresolvedItems.push(String(item.name || item.product_name || `Live Pack #${rawPackId}`));
+            return null;
+          }
+
+          // Authoritative live price strictly from D1
+          const packPrice = Number(pack.live_price) || 0;
+
+          // Resolve bundled product names from authoritative catalog
+          let productIds: string[] = [];
+          try {
+            productIds = typeof pack.product_ids === "string" ? JSON.parse(pack.product_ids) : (pack.product_ids || []);
+          } catch {
+            productIds = [];
+          }
+
+          const bundleNames = productIds.map((pid: string) => {
+            const found = (products || []).find(
+              (p: any) =>
+                String(p.id) === String(pid) ||
+                String(p.product_nbr) === String(pid) ||
+                (p.name && p.name.toLowerCase() === String(pid).toLowerCase()),
+            );
+            return found ? (found.name_ar || found.name) : `منتج #${pid}`;
+          });
+
+          computedSubtotal += packPrice * quantity;
+          return {
+            ...item,
+            isLivePack: true,
+            livePackId: pack.id,
+            livePackName: pack.name,
+            packComposition: bundleNames,
+            name: pack.name || item.name,
+            price: `${packPrice} DH`,
+            quantity,
+          };
+        }
+
+        // Find matching product in memory / D1 catalog
+        const match = (products || []).find(
+          (p: any) =>
+            String(p.id) === String(item.id || item.product_nbr) ||
+            String(p.product_nbr) === String(item.product_nbr || item.id) ||
+            (p.name && item.name && p.name.toLowerCase() === item.name.toLowerCase())
         );
-      } else {
-        // We have a real catalog and this item isn't in it — do not invent a
-        // price and do not trust the client's. Collect it and reject below.
-        unresolvedItems.push(String(item.name || item.product_name || item.id || "unknown item"));
-      }
 
-      computedSubtotal += itemPrice * quantity;
-      return {
-        ...item,
-        price: `${itemPrice} DH`,
-        quantity,
-      };
-    });
+        let itemPrice = 0;
+        if (match) {
+          const rawPriceStr = typeof match.price === "string" ? match.price.replace(/[^\d.]/g, "") : String(match.price);
+          itemPrice = parseFloat(rawPriceStr) || 0;
+        } else if (!catalogAvailable && ALLOW_UNVERIFIED_PRICES) {
+          // Opt-in outage path, OFF by default. See the constant's comment: this
+          // accepts a price the customer's own browser supplied, so it is only
+          // reachable when an operator has explicitly decided that taking orders
+          // during a catalogue outage matters more than pricing them correctly.
+          itemPrice = parseFloat(String(item.price).replace(/[^\d.]/g, "")) || 0;
+          console.error(
+            `[Checkout][UNVERIFIED PRICE] Product catalog unavailable — accepting client-supplied price ${itemPrice} for "${item.name || item.product_name || item.id}". Verify this order manually before dispatching.`,
+          );
+        } else {
+          // We have a real catalog and this item isn't in it — do not invent a
+          // price and do not trust the client's. Collect it and reject below.
+          unresolvedItems.push(String(item.name || item.product_name || item.id || "unknown item"));
+        }
+
+        computedSubtotal += itemPrice * quantity;
+        return {
+          ...item,
+          price: `${itemPrice} DH`,
+          quantity,
+        };
+      })
+    );
+
+    const validatedItems = rawValidatedItems.filter(Boolean);
 
     if (unresolvedItems.length > 0) {
       // Distinguish the two causes. "No longer available" is true when the
@@ -380,6 +450,17 @@ export function createCheckoutRouter(state: CheckoutState) {
 
     const computedTotal = Math.max(0, computedSubtotal - validatedDiscount + shippingFee);
 
+    // Collect Live Pack composition note for order comment
+    const livePackComments = validatedItems
+      .filter((i: any) => i?.isLivePack)
+      .map((i: any) => {
+        const comp = Array.isArray(i.packComposition) && i.packComposition.length > 0
+          ? i.packComposition.map((c: string) => `1x ${c}`).join(", ")
+          : "";
+        return `[LIVE PACK: ${i.livePackName || i.name}] Contents: ${comp}`;
+      });
+    const orderComment = livePackComments.length > 0 ? livePackComments.join("\n") : "";
+
     // Create a new order object with server-verified prices
     const orderNbr = generateOrderNbr();
     const newOrder = {
@@ -392,7 +473,7 @@ export function createCheckoutRouter(state: CheckoutState) {
       discountAmount: validatedDiscount,
       subtotalPrice: computedSubtotal,
       status: "pending",
-      comment: "",
+      comment: orderComment,
       createdAt: new Date().toISOString(),
     };
     orders.unshift(newOrder); // Add to the top
@@ -431,11 +512,10 @@ export function createCheckoutRouter(state: CheckoutState) {
           parseFloat(String(newOrder.discountAmount).replace(/[^\d.]/g, "")) ||
           0;
 
-        // status ('pending') and comment ('') stay literals — fixed for a new
-        // order. 13 placeholders across the 15 columns, in column order.
+        // status ('pending') is fixed for a new order. 14 placeholders across the 15 columns.
         const orderInsertSql = `INSERT INTO orders (
           id, order_nbr, first_name, last_name, phone, address, city, zip, total, subtotal, discount_amount, coupon_applied, status, comment, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', ?);`;
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?);`;
         const orderInsertParams = [
           newOrder.id,
           newOrder.orderNbr,
@@ -449,6 +529,7 @@ export function createCheckoutRouter(state: CheckoutState) {
           numericSubtotal,
           numericDiscount,
           couponCodeStr,
+          newOrder.comment || "",
           orderCreatedDateObj,
         ];
 
@@ -477,19 +558,29 @@ export function createCheckoutRouter(state: CheckoutState) {
         // parent order (line items not summing to the order total) and would
         // re-introduce the client-price trust this handler just eliminated.
         for (const item of validatedItems) {
-          const rawProductNbr =
-            item.product_nbr !== undefined
-              ? item.product_nbr
-              : item.productNbr !== undefined
-                ? item.productNbr
-                : null;
-          const parsedProductNbr = rawProductNbr !== null ? parseInt(String(rawProductNbr), 10) : NaN;
-          // null, not the string "NULL": this value is a bound parameter, so
-          // "NULL" would be stored as the four-character text "NULL" in
-          // order_items.product_nbr rather than a real SQL NULL. (It worked
-          // before this statement was parameterized only because the old form
-          // interpolated it unquoted.)
-          const itemProductNbr = Number.isInteger(parsedProductNbr) ? parsedProductNbr : null;
+          let itemProductNbr: number | null = null;
+          let itemName = item.name || item.product_name;
+
+          if (item.isLivePack) {
+            itemProductNbr = null;
+            const compStr = Array.isArray(item.packComposition) && item.packComposition.length > 0
+              ? ` (${item.packComposition.join(" + ")})`
+              : "";
+            itemName = `LIVE PACK: ${item.livePackName || item.name}${compStr}`;
+          } else {
+            const rawProductNbr =
+              item.product_nbr !== undefined
+                ? item.product_nbr
+                : item.productNbr !== undefined
+                  ? item.productNbr
+                  : null;
+            const parsedProductNbr = rawProductNbr !== null ? parseInt(String(rawProductNbr), 10) : NaN;
+            // null, not the string "NULL": this value is a bound parameter, so
+            // "NULL" would be stored as the four-character text "NULL" in
+            // order_items.product_nbr rather than a real SQL NULL.
+            itemProductNbr = Number.isInteger(parsedProductNbr) ? parsedProductNbr : null;
+          }
+
           const numericItemPrice =
             parseFloat(String(item.price).replace(/[^\d.]/g, "")) || 0;
 
@@ -499,12 +590,12 @@ export function createCheckoutRouter(state: CheckoutState) {
           const itemOk = await state.executeD1Query(itemInsertSql, [
             newOrder.orderNbr,
             itemProductNbr,
-            item.name || item.product_name,
+            itemName,
             parseInt(item.quantity, 10) || 1,
             numericItemPrice,
           ]);
           if (!itemOk) {
-            failedItemInserts.push(String(item.name || item.product_name || "unknown item"));
+            failedItemInserts.push(String(itemName || "unknown item"));
           }
         }
 
@@ -538,21 +629,17 @@ export function createCheckoutRouter(state: CheckoutState) {
     // ids to expand a purchased pack into its members and then drop the
     // duplicate when one of those members was also bought separately — a
     // comparison that only works by id. See src/lib/reviewTargets.ts.
-    //
-    // The id is re-resolved against the catalog rather than taken from the
-    // browser's cart line: `item.id` is client-supplied, and the review form
-    // uses these ids to decide which products a pack expands into. Resolving
-    // here — by the same id-or-name match the price validation above uses —
-    // keeps a stale or foreign id in a cart from turning into a review box for
-    // the wrong product. null means "unknown", which falls back to the name.
-    // Reuses `products` from the price-validation block above, which has
-    // already been refreshed from D1 if this instance booted with an empty
-    // catalog — calling getProducts() again here could see the empty one.
     const catalogForRefs = Array.isArray(products) ? products : [];
     const productRefs = validatedItems.map((i: any) => {
       const itemName = String(
         i?.name || i?.product_name || i?.productName || "Botanical Oil",
       );
+      if (i.isLivePack) {
+        return {
+          id: i.livePackId ? `live_pack_${i.livePackId}` : null,
+          name: itemName,
+        };
+      }
       const matched = catalogForRefs.find(
         (p: any) =>
           String(p.id) === String(i?.id ?? i?.product_nbr ?? "") ||
@@ -582,13 +669,6 @@ export function createCheckoutRouter(state: CheckoutState) {
 
     if (tgBotToken && tgChatId) {
       try {
-        const itemsList = validatedItems
-          .map(
-            (i: any) =>
-              `- ${i.name || i.product_name} (x${i.quantity}): ${i.price}`,
-          )
-          .join("\\n");
-
         let couponStr = "";
         if (appliedCoupon) {
           couponStr =
@@ -599,11 +679,11 @@ export function createCheckoutRouter(state: CheckoutState) {
 
         const numericSubtotal = subtotalPrice
           ? Math.round(
-              parseFloat(String(subtotalPrice).replace(/[^\\d.]/g, "")),
+              parseFloat(String(subtotalPrice).replace(/[^\d.]/g, "")),
             )
-          : parseFloat(String(total).replace(/[^\\d.]/g, ""));
+          : parseFloat(String(total).replace(/[^\d.]/g, ""));
         const numericDiscount = discountAmount
-          ? parseFloat(String(discountAmount).replace(/[^\\d.]/g, ""))
+          ? parseFloat(String(discountAmount).replace(/[^\d.]/g, ""))
           : 0;
         const isFree = numericSubtotal - numericDiscount >= 500;
 
@@ -617,10 +697,6 @@ export function createCheckoutRouter(state: CheckoutState) {
         }
 
         let areaCode = "";
-        // Declared outside the if-block below (was previously scoped inside it with `const`,
-        // which threw a silent ReferenceError whenever a customer had a country set —
-        // that exception was swallowed by the outer catch and blocked the Telegram message
-        // from ever being sent for those orders).
         let matchedCountry: any = null;
         if (customer.country || customer.countryId) {
           matchedCountry = currentCountries.find((c: any) =>
@@ -652,6 +728,50 @@ export function createCheckoutRouter(state: CheckoutState) {
            cleanPhone = "00212" + cleanPhone.substring(1); // Standardize for Morocco fallback
         }
 
+        const escapeHtml = (text: string) =>
+          text
+            ? String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+            : "";
+
+        const safeCustomerFirstName = escapeHtml(customerFirstName);
+        const safeCustomerLastName = escapeHtml(customerLastName);
+        const safePhone = escapeHtml(cleanPhone || "-");
+        const safeCity = escapeHtml(customer.city || "-");
+        const safeAddress = escapeHtml(customer.address || "-");
+        const safeZip = customer.zip ? escapeHtml(customer.zip) : "";
+
+        // Format items list for WhatsApp
+        const waItemsList = validatedItems
+          .map((i: any) => {
+            if (i.isLivePack) {
+              const packName = i.livePackName || i.name || "Live Pack";
+              const contents = Array.isArray(i.packComposition) && i.packComposition.length > 0
+                ? i.packComposition.map((c: string) => `    - 1x ${c}`).join("\n")
+                : "";
+              return `🔥 *LIVE PACK: ${packName}* (x${i.quantity})\n  السعر: ${i.price}${contents ? `\n  المحتويات:\n${contents}` : ""}`;
+            }
+            return `• ${i.name || i.product_name} (x${i.quantity}): ${i.price}`;
+          })
+          .join("\n\n");
+
+        // Format safe items list for Telegram HTML
+        const safeItemsList = validatedItems
+          .map((i: any) => {
+            if (i.isLivePack) {
+              const packName = escapeHtml(i.livePackName || i.name || "Live Pack");
+              const price = escapeHtml(String(i.price));
+              const contents = Array.isArray(i.packComposition) && i.packComposition.length > 0
+                ? i.packComposition.map((c: string) => `    • 1x ${escapeHtml(c)}`).join("\n")
+                : "";
+              return `🔥 <b>LIVE PACK: ${packName}</b> (x${i.quantity})\n  💰 <b>Price:</b> ${price}${contents ? `\n  📦 <b>Contents:</b>\n${contents}` : ""}`;
+            }
+            return `🔸 ${escapeHtml(i.name || i.product_name)} (x${i.quantity}) - ${escapeHtml(String(i.price))}`;
+          })
+          .join("\n\n");
+
         const templateData = {
           orderId: orderNbr || "Unassigned",
           firstName: customerFirstName,
@@ -659,7 +779,7 @@ export function createCheckoutRouter(state: CheckoutState) {
           phone: cleanPhone || "-",
           city: customer.city || "-",
           address: customer.address || "-",
-          itemsList: validatedItems.map((i: any) => `• ${i.name || i.product_name} (x${i.quantity})`).join("\n"),
+          itemsList: waItemsList,
           trackingNumber: "",
           totalPrice: total,
           reviewLink: ""
@@ -689,22 +809,6 @@ export function createCheckoutRouter(state: CheckoutState) {
 
         const waPhoneStr = cleanPhone.startsWith("00") ? cleanPhone.substring(2) : cleanPhone.replace("+", "");
         const whatsappForwardUrl = `https://wa.me/${waPhoneStr}?text=${encodeURIComponent(whatsappSummaryLines)}`;
-
-        const escapeHtml = (text: string) =>
-          text
-            ? String(text)
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-            : "";
-
-        const safeCustomerFirstName = escapeHtml(customerFirstName);
-        const safeCustomerLastName = escapeHtml(customerLastName);
-        const safePhone = escapeHtml(cleanPhone || "-");
-        const safeCity = escapeHtml(customer.city || "-");
-        const safeAddress = escapeHtml(customer.address || "-");
-        const safeZip = customer.zip ? escapeHtml(customer.zip) : "";
-        const safeItemsList = validatedItems.map((i: any) => `🔸 ${escapeHtml(i.name || i.product_name)} (x${i.quantity})`).join("\n");
 
         const tgTemplateData = {
           ...templateData,

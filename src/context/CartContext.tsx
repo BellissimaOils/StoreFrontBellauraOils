@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { Product, CartItem } from '../types';
+import { Product, CartItem, LivePack } from '../types';
 import { useProducts } from './ProductContext';
 
 interface CartContextType {
   cart: CartItem[];
   addToCart: (product: Product, qty?: number) => void;
+  addLivePackToCart: (pack: LivePack, qty?: number) => void;
   removeFromCart: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
@@ -72,6 +73,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (products && products.length > 0 && cart.length > 0) {
       let changed = false;
       const updatedCart = cart.map(item => {
+        // Live Packs are commercial promotional bundles — do NOT overwrite with single products
+        if (item.isLivePack) return item;
+
         const matchingProduct = products.find(p => p.id === item.id);
         if (matchingProduct) {
           const hasPriceDiff = matchingProduct.price !== item.price;
@@ -134,6 +138,45 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return [...prevCart, { ...product, quantity: qty }];
     });
+  }, []);
+
+  const addLivePackToCart = useCallback((pack: LivePack, qty: number = 1) => {
+    const livePackCartId = `live_pack_${pack.id}`;
+    const repImage = pack.products?.[0]?.image || "";
+
+    const packItem: CartItem = {
+      id: livePackCartId,
+      name: pack.name,
+      category: "عروض اللايف",
+      price: `${Math.round(pack.live_price)} DH`,
+      originalPrice: pack.regular_price > pack.live_price ? `${Math.round(pack.regular_price)} DH` : undefined,
+      isSale: pack.regular_price > pack.live_price,
+      image: repImage,
+      description: pack.description || "",
+      quantity: qty,
+      isLivePack: true,
+      livePackId: pack.id,
+      includedProducts: (pack.products || []).map((p) => ({
+        id: String(p.id),
+        name: p.name,
+        name_en: p.name_en,
+        name_ar: p.name_ar,
+        image: p.image,
+        price: p.price,
+        volume: p.volume || p.size_label,
+      })),
+    };
+
+    setCart(prevCart => {
+      const existingItem = prevCart.find(item => item.id === livePackCartId);
+      if (existingItem) {
+        return prevCart.map(item =>
+          item.id === livePackCartId ? { ...item, quantity: item.quantity + qty } : item
+        );
+      }
+      return [...prevCart, packItem];
+    });
+    setIsCartOpen(true);
   }, []);
 
   const removeFromCart = useCallback((productId: string) => {
@@ -230,6 +273,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const contextValue = useMemo(() => ({
     cart, 
     addToCart, 
+    addLivePackToCart,
     removeFromCart, 
     updateQuantity, 
     clearCart,
@@ -245,6 +289,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }), [
     cart, 
     addToCart, 
+    addLivePackToCart,
     removeFromCart, 
     updateQuantity, 
     clearCart,
