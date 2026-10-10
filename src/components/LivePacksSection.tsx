@@ -36,22 +36,22 @@ export default function LivePacksSection({
   const isSingle = visiblePacks.length === 1;
 
   const content = (
-    <div className={`${isSingle ? "max-w-2xl lg:max-w-3xl" : "max-w-4xl"} mx-auto space-y-4 sm:space-y-6`}>
-      {/* Section Header */}
-      <div className="text-center space-y-2 max-w-xl mx-auto">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-600/10 border border-red-500/20 text-red-600 text-xs font-black tracking-wide">
-          <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+    <div className={`${isSingle ? "max-w-2xl lg:max-w-3xl" : "max-w-4xl"} mx-auto space-y-3 sm:space-y-6`}>
+      {/* Section Header - Compact and responsive on mobile */}
+      <div className="text-center space-y-1.5 sm:space-y-2 max-w-xl mx-auto px-2">
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-600/10 border border-red-500/20 text-red-600 text-[11px] font-black tracking-wide">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
           <span>{isAr ? "عروض البث المباشر الحصرية" : isFr ? "Offres Spéciales Direct" : "Exclusive Live Offers"}</span>
         </div>
 
         <h2
-          className="text-2xl sm:text-3xl font-serif font-black tracking-tight"
+          className="text-xl sm:text-3xl font-serif font-black tracking-tight"
           style={{ color: textColor || undefined }}
         >
           🔥 {title || (isAr ? "عروض اللايف الحصرية" : isFr ? "Packs Exclusifs Live" : "Exclusive Live Packs")}
         </h2>
 
-        <p className="text-xs sm:text-sm text-primary-earth/70 font-light leading-relaxed">
+        <p className="text-[11px] sm:text-sm text-primary-earth/70 font-light leading-relaxed max-w-lg mx-auto">
           {subtitle ||
             (isAr
               ? "باقات ترويجية خاصة ومحدودة بمناسبة البث المباشر. وفر أكثر مع مجموعات زيوتنا الطبيعية الأكثر طلباً."
@@ -62,7 +62,7 @@ export default function LivePacksSection({
       </div>
 
       {/* Vertical Stack of Packs */}
-      <div className="flex flex-col gap-6 sm:gap-8">
+      <div className="flex flex-col gap-4 sm:gap-8">
         {visiblePacks.map((pack, index) => (
           <LivePackCard key={pack.id || index} pack={pack} index={index} />
         ))}
@@ -81,7 +81,7 @@ export default function LivePacksSection({
   return (
     <section
       id="live-packs-section"
-      className="py-10 sm:py-14 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-amber-500/[0.04] via-background-soft to-background-soft border-y border-accent-gold/15"
+      className="py-6 sm:py-14 px-3 sm:px-6 lg:px-8 bg-gradient-to-b from-amber-500/[0.04] via-background-soft to-background-soft border-y border-accent-gold/15"
       dir={isAr ? "rtl" : "ltr"}
     >
       {content}
@@ -120,15 +120,11 @@ function LivePackCard({ pack, index }: { pack: LivePack; index: number; key?: Re
   const productsList = pack.products || [];
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 15 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.35, delay: index * 0.08 }}
+    <div
       className="bg-white rounded-2xl sm:rounded-3xl border border-primary-earth/10 shadow-md shadow-primary-earth/[0.03] overflow-hidden flex flex-col transition-all hover:border-accent-gold/40 hover:shadow-lg"
     >
       {/* Pack Top Bar */}
-      <div className="p-4 sm:p-5 border-b border-primary-earth/5 bg-gradient-to-r from-accent-gold/[0.05] via-transparent to-accent-gold/[0.02]">
+      <div className="p-3.5 sm:p-5 border-b border-primary-earth/5 bg-gradient-to-r from-accent-gold/[0.05] via-transparent to-accent-gold/[0.02]">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
@@ -319,6 +315,6 @@ function LivePackCard({ pack, index }: { pack: LivePack; index: number; key?: Re
           )}
         </button>
       </div>
-    </motion.div>
+    </div>
   );
 }

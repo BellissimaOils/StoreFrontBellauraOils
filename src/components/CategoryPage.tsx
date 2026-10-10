@@ -474,7 +474,7 @@ export default function CategoryPage() {
         <meta property="og:title" content={pageTitle} />
         <meta property="og:description" content={pageDescription} />
       </Helmet>
-      <div className={`min-h-screen bg-white ${isLiveSection ? 'pt-24 lg:pt-28 pb-12' : 'pt-40 lg:pt-36 pb-24'}`}>
+      <div className={`min-h-screen bg-white ${isLiveSection ? 'pt-32 sm:pt-36 lg:pt-32 pb-12' : 'pt-40 lg:pt-36 pb-24'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Section Header & Layout Look Switcher Controls - Only on normal catalog pages */}
           {!isLiveSection && (
