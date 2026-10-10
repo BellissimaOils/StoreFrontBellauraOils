@@ -474,79 +474,81 @@ export default function CategoryPage() {
         <meta property="og:title" content={pageTitle} />
         <meta property="og:description" content={pageDescription} />
       </Helmet>
-      <div className="pt-40 lg:pt-36 pb-24 bg-white min-h-screen">
+      <div className={`min-h-screen bg-white ${isLiveSection ? 'pt-24 lg:pt-28 pb-12' : 'pt-40 lg:pt-36 pb-24'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Section Header & Layout Look Switcher Controls */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-8 mb-8 border-b border-primary-earth/10">
-            <div>
-              <h1
-                className="text-2xl sm:text-3xl lg:text-4xl font-serif font-black tracking-tight"
-                style={{ color: currentSection?.text_color || undefined }}
-              >
-                {categoryName}
-              </h1>
-              {currentSection && (currentSection.subtitle_ar || currentSection.subtitle_en) && (
-                <p className="text-xs sm:text-sm text-primary-earth/70 mt-1">
-                  {language === "ar"
-                    ? currentSection.subtitle_ar || currentSection.subtitle_en
-                    : language === "fr"
-                    ? currentSection.subtitle_fr || currentSection.subtitle_en
-                    : currentSection.subtitle_en || currentSection.subtitle_ar}
-                </p>
-              )}
-            </div>
-
-            {hasMultipleLayouts && !isLiveSection && (
-              <div className="flex items-center gap-1 bg-[#1f112a] p-1.5 rounded-2xl border border-accent-gold/30 shadow-md self-start sm:self-auto">
-                {isVerticalAllowed && (
-                  <button
-                    onClick={() => setViewMode("vertical")}
-                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium transition-all duration-300 cursor-pointer ${
-                      viewMode === "vertical"
-                        ? "bg-accent-gold text-[#1f112a] font-bold shadow-md"
-                        : "text-white/70 hover:text-white hover:bg-white/10"
-                    }`}
-                    title="Vertical"
-                  >
-                    <RectangleVertical className="w-3.5 h-3.5" />
-                    <span>
-                      {language === "ar"
-                        ? "عمودي"
-                        : language === "fr"
-                          ? "Vertical"
-                          : "Vertical"}
-                    </span>
-                  </button>
-                )}
-
-                {isBannerAllowed && (
-                  <button
-                    onClick={() => setViewMode("banner")}
-                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium transition-all duration-300 cursor-pointer ${
-                      viewMode === "banner"
-                        ? "bg-accent-gold text-[#1f112a] font-bold shadow-md"
-                        : "text-white/70 hover:text-white hover:bg-white/10"
-                    }`}
-                    title="Horizontal Banner"
-                  >
-                    <StretchHorizontal className="w-3.5 h-3.5" />
-                    <span>
-                      {language === "ar"
-                        ? "أفقي"
-                        : language === "fr"
-                          ? "Horizontal"
-                          : "Horizontal"}
-                    </span>
-                  </button>
+          {/* Section Header & Layout Look Switcher Controls - Only on normal catalog pages */}
+          {!isLiveSection && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-8 mb-8 border-b border-primary-earth/10">
+              <div>
+                <h1
+                  className="text-2xl sm:text-3xl lg:text-4xl font-serif font-black tracking-tight"
+                  style={{ color: currentSection?.text_color || undefined }}
+                >
+                  {categoryName}
+                </h1>
+                {currentSection && (currentSection.subtitle_ar || currentSection.subtitle_en) && (
+                  <p className="text-xs sm:text-sm text-primary-earth/70 mt-1">
+                    {language === "ar"
+                      ? currentSection.subtitle_ar || currentSection.subtitle_en
+                      : language === "fr"
+                      ? currentSection.subtitle_fr || currentSection.subtitle_en
+                      : currentSection.subtitle_en || currentSection.subtitle_ar}
+                  </p>
                 )}
               </div>
-            )}
-          </div>
+
+              {hasMultipleLayouts && (
+                <div className="flex items-center gap-1 bg-[#1f112a] p-1.5 rounded-2xl border border-accent-gold/30 shadow-md self-start sm:self-auto">
+                  {isVerticalAllowed && (
+                    <button
+                      onClick={() => setViewMode("vertical")}
+                      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium transition-all duration-300 cursor-pointer ${
+                        viewMode === "vertical"
+                          ? "bg-accent-gold text-[#1f112a] font-bold shadow-md"
+                          : "text-white/70 hover:text-white hover:bg-white/10"
+                      }`}
+                      title="Vertical"
+                    >
+                      <RectangleVertical className="w-3.5 h-3.5" />
+                      <span>
+                        {language === "ar"
+                          ? "عمودي"
+                          : language === "fr"
+                            ? "Vertical"
+                            : "Vertical"}
+                      </span>
+                    </button>
+                  )}
+
+                  {isBannerAllowed && (
+                    <button
+                      onClick={() => setViewMode("banner")}
+                      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium transition-all duration-300 cursor-pointer ${
+                        viewMode === "banner"
+                          ? "bg-accent-gold text-[#1f112a] font-bold shadow-md"
+                          : "text-white/70 hover:text-white hover:bg-white/10"
+                      }`}
+                      title="Horizontal Banner"
+                    >
+                      <StretchHorizontal className="w-3.5 h-3.5" />
+                      <span>
+                        {language === "ar"
+                          ? "أفقي"
+                          : language === "fr"
+                            ? "Horizontal"
+                            : "Horizontal"}
+                      </span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {isLiveSection ? (
-            <div className="space-y-12">
+            <div className="space-y-8">
               {livePacksLoading ? (
-                <div className="py-20 text-center">
+                <div className="py-16 text-center">
                   <div className="w-10 h-10 border-4 border-accent-gold border-t-transparent rounded-full animate-spin mx-auto mb-3" />
                   <p className="text-xs uppercase tracking-widest text-primary-earth/60">
                     {language === "ar" ? "جاري تحميل عروض اللايف..." : "Loading live packs..."}
@@ -562,14 +564,15 @@ export default function CategoryPage() {
                       ? currentSection?.subtitle_ar || undefined
                       : currentSection?.subtitle_en || undefined
                   }
+                  isStandalone={true}
                 />
               ) : (
-                <div className="text-center py-20 px-4 bg-background-soft/60 rounded-3xl border border-primary-earth/10 max-w-2xl mx-auto my-8">
-                  <div className="w-14 h-14 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto mb-4 text-2xl">
+                <div className="text-center py-16 px-4 bg-background-soft/60 rounded-3xl border border-primary-earth/10 max-w-xl mx-auto my-6">
+                  <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto mb-3 text-xl">
                     🔥
                   </div>
                   <h3
-                    className="text-xl sm:text-2xl font-serif font-bold text-primary-earth mb-2"
+                    className="text-lg sm:text-xl font-serif font-bold text-primary-earth mb-1.5"
                     style={{ color: currentSection?.text_color || undefined }}
                   >
                     {language === "ar"
