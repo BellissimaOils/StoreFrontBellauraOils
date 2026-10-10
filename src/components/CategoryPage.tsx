@@ -591,19 +591,6 @@ export default function CategoryPage() {
                 </div>
               )}
 
-              {/* If products also exist under this category, show them below the live packs */}
-              {products.length > 0 && (
-                <div className="pt-8 border-t border-primary-earth/10">
-                  <h2 className="text-xl font-serif font-bold text-primary-earth mb-6">
-                    {language === "ar" ? "منتجات ذات صلة" : language === "fr" ? "Produits associés" : "Related Products"}
-                  </h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-5 sm:gap-6">
-                    {visibleProducts.map((product) => (
-                      <ProductCard key={product.id} product={product} layoutMode="vertical" />
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           ) : (
             <>
