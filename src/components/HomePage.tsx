@@ -435,8 +435,26 @@ function HomePage() {
           <div className="absolute right-12 bottom-0 top-0 w-px bg-primary-earth/10 hidden lg:block z-10" />
           <div className="absolute right-0 bottom-12 w-24 h-px bg-primary-earth/10 hidden lg:block z-10" />
         </section>
-        {livePacks.length > 0 && <LivePacksSection packs={livePacks} />}
       </React.Fragment>
+      );
+    }
+
+    if (
+      s.type === "live" ||
+      s.title_en?.trim().toLowerCase() === "live" ||
+      s.title_ar?.trim() === "لايف" ||
+      s.title_ar?.trim() === "عروض اللايف" ||
+      s.link_url?.trim().toLowerCase() === "/live"
+    ) {
+      return (
+        <div key={s.id || idx} id="live">
+          <LivePacksSection
+            packs={livePacks}
+            title={title}
+            subtitle={subtitle}
+            textColor={s.text_color}
+          />
+        </div>
       );
     }
 
@@ -708,9 +726,6 @@ function HomePage() {
         </div>
       ) : sections.length > 0 ? (
         <div className="space-y-0">
-          {!sections.some((s) => s.type === "hero") && livePacks.length > 0 && (
-            <LivePacksSection packs={livePacks} />
-          )}
           {sections.map((s, idx) => renderSection(s, idx))}
         </div>
       ) : hasFetched ? (

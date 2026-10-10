@@ -8,9 +8,17 @@ import { getOptimizedImageUrl } from "../lib/imageUtils";
 
 interface LivePacksSectionProps {
   packs: LivePack[];
+  title?: string;
+  subtitle?: string;
+  textColor?: string;
 }
 
-export default function LivePacksSection({ packs }: LivePacksSectionProps) {
+export default function LivePacksSection({
+  packs,
+  title,
+  subtitle,
+  textColor,
+}: LivePacksSectionProps) {
   const { addLivePackToCart } = useCart();
   const { language } = useLanguage();
   const isAr = language === "ar";
@@ -37,16 +45,20 @@ export default function LivePacksSection({ packs }: LivePacksSectionProps) {
             <span>{isAr ? "عروض البث المباشر الحصرية" : isFr ? "Offres Spéciales Direct" : "Exclusive Live Offers"}</span>
           </div>
 
-          <h2 className="text-2xl sm:text-4xl font-serif font-black text-primary-earth tracking-tight">
-            🔥 {isAr ? "عروض اللايف الحصرية" : isFr ? "Packs Exclusifs Live" : "Exclusive Live Packs"}
+          <h2
+            className="text-2xl sm:text-4xl font-serif font-black tracking-tight"
+            style={{ color: textColor || undefined }}
+          >
+            🔥 {title || (isAr ? "عروض اللايف الحصرية" : isFr ? "Packs Exclusifs Live" : "Exclusive Live Packs")}
           </h2>
 
           <p className="text-xs sm:text-sm text-primary-earth/70 font-light leading-relaxed">
-            {isAr
-              ? "باقات ترويجية خاصة ومحدودة بمناسبة البث المباشر. وفر أكثر مع مجموعات زيوتنا الطبيعية الأكثر طلباً."
-              : isFr
-              ? "Des offres promotionnelles éphémères spécialement conçues pour notre Live. Profitez de nos meilleurs soins au prix Live."
-              : "Special limited promotional bundles for our Live stream. Get your favorite pure oils at exclusive live pricing."}
+            {subtitle ||
+              (isAr
+                ? "باقات ترويجية خاصة ومحدودة بمناسبة البث المباشر. وفر أكثر مع مجموعات زيوتنا الطبيعية الأكثر طلباً."
+                : isFr
+                ? "Des offres promotionnelles éphémères spécialement conçues pour notre Live. Profitez de nos meilleurs soins au prix Live."
+                : "Special limited promotional bundles for our Live stream. Get your favorite pure oils at exclusive live pricing.")}
           </p>
         </div>
 

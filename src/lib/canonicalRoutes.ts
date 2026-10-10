@@ -163,6 +163,11 @@ export function resolvePath(
   if (p.startsWith("/review/") && p.length > "/review/".length) return "private";
   if ((PRIVATE_EXACT_PATHS as readonly string[]).includes(p)) return "private";
 
+  // --- Admin-created sections (checked case-insensitively so custom links like /Live work) ---
+  const pLower = p.toLowerCase();
+  if (sectionPaths && (sectionPaths.includes(p) || sectionPaths.includes(pLower))) return "section";
+  if (pLower === "/live") return "section";
+
   // --- Casing --------------------------------------------------------
   // Every public URL the site emits is lowercase, so /Products and
   // /Category/skin are not "the same page with different capitalisation" —

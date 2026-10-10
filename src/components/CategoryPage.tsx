@@ -3,8 +3,9 @@ import { useParams, useLocation } from "react-router-dom";
 import { CATEGORIES } from "./constants";
 import { useLanguage } from "../context/LanguageContext";
 import { useProducts } from "../context/ProductContext";
-import { getProductSlug } from "../types";
+import { getProductSlug, LivePack } from "../types";
 import ProductCard from "./ProductCard";
+import LivePacksSection from "./LivePacksSection";
 import NotFoundPage from "./NotFoundPage";
 import LoadMoreButton from "./LoadMoreButton";
 import { PRODUCTS_PAGE_SIZE } from "../lib/useIncrementalList";
@@ -149,8 +150,32 @@ export default function CategoryPage() {
   // so the row driving the layout is the same row driving the SEO text, and
   // the same row the server picks. This previously compared only the last URL
   // segment with its own special case for "products", which is how the client
-  // and server ended up selecting different rows for the same URL.
   const currentSection = findSectionForPath(sections, location.pathname);
+
+  const isLiveSection =
+    cleanId === "live" ||
+    location.pathname.toLowerCase() === "/live" ||
+    currentSection?.title_en?.trim().toLowerCase() === "live" ||
+    currentSection?.link_url?.trim().toLowerCase() === "/live";
+
+  const [livePacks, setLivePacks] = useState<LivePack[]>([]);
+  const [livePacksLoading, setLivePacksLoading] = useState(false);
+
+  useEffect(() => {
+    if (isLiveSection) {
+      setLivePacksLoading(true);
+      fetchWithCache("/api/live-packs")
+        .then((data) => {
+          if (data && data.success && data.enabled && Array.isArray(data.packs)) {
+            setLivePacks(data.packs);
+          } else {
+            setLivePacks([]);
+          }
+        })
+        .catch(() => setLivePacks([]))
+        .finally(() => setLivePacksLoading(false));
+    }
+  }, [isLiveSection]);
 
   let layoutsConfig = storeSettings?.categoryLayouts;
   if (currentSection && currentSection.available_layouts) {
@@ -362,6 +387,16 @@ export default function CategoryPage() {
     products = allProducts.filter((p) =>
       hasCategoryMatch(p, ["pack", "packs", "bundle", "collection"]),
     );
+  } else if (isLiveSection) {
+    categoryName =
+      language === "ar"
+        ? (currentSection?.title_ar || "عروض اللايف")
+        : language === "fr"
+        ? (currentSection?.title_fr || "Offres Live")
+        : (currentSection?.title_en || "Live Packs");
+    products = allProducts.filter((p) =>
+      hasCategoryMatch(p, ["live", "livepack", "live-pack", "pack"]),
+    );
   } else {
     const category = CATEGORIES.find((c) => c.id.toLowerCase() === cleanId);
     if (category) {
@@ -442,9 +477,26 @@ export default function CategoryPage() {
       <div className="pt-40 lg:pt-36 pb-24 bg-white min-h-screen">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Section Header & Layout Look Switcher Controls */}
-          {hasMultipleLayouts && (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-4 pb-8 mb-8 border-b border-primary-earth/10">
-              {/* Layout Toggle Buttons (Vertical & Horizontal only) */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-8 mb-8 border-b border-primary-earth/10">
+            <div>
+              <h1
+                className="text-2xl sm:text-3xl lg:text-4xl font-serif font-black tracking-tight"
+                style={{ color: currentSection?.text_color || undefined }}
+              >
+                {categoryName}
+              </h1>
+              {currentSection && (currentSection.subtitle_ar || currentSection.subtitle_en) && (
+                <p className="text-xs sm:text-sm text-primary-earth/70 mt-1">
+                  {language === "ar"
+                    ? currentSection.subtitle_ar || currentSection.subtitle_en
+                    : language === "fr"
+                    ? currentSection.subtitle_fr || currentSection.subtitle_en
+                    : currentSection.subtitle_en || currentSection.subtitle_ar}
+                </p>
+              )}
+            </div>
+
+            {hasMultipleLayouts && !isLiveSection && (
               <div className="flex items-center gap-1 bg-[#1f112a] p-1.5 rounded-2xl border border-accent-gold/30 shadow-md self-start sm:self-auto">
                 {isVerticalAllowed && (
                   <button
@@ -488,45 +540,108 @@ export default function CategoryPage() {
                   </button>
                 )}
               </div>
-            </div>
-          )}
-
-          {/* Dynamic Product Grid based on selected Look */}
-          <div
-            className={
-              viewMode === "banner"
-                ? "grid grid-cols-1 gap-8 sm:gap-10" // Wide Banner (Horizontal)
-                : "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-5 sm:gap-6" // Vertical (Default)
-            }
-          >
-            {products.length > 0 ? (
-              visibleProducts.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  layoutMode={viewMode}
-                />
-              ))
-            ) : (
-              <div className="col-span-full py-20 text-center">
-                <p className="text-primary-earth/40">
-                  {language === "ar"
-                    ? "لم يتم العثور على منتجات"
-                    : language === "fr"
-                      ? "Aucun produit trouvé"
-                      : "No products found"}
-                </p>
-              </div>
             )}
           </div>
 
-          <LoadMoreButton
-            onClick={showMoreProducts}
-            hasMore={hasMoreProducts}
-            loaded={visibleProducts.length}
-            total={products.length}
-            className="mt-14"
-          />
+          {isLiveSection ? (
+            <div className="space-y-12">
+              {livePacksLoading ? (
+                <div className="py-20 text-center">
+                  <div className="w-10 h-10 border-4 border-accent-gold border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-xs uppercase tracking-widest text-primary-earth/60">
+                    {language === "ar" ? "جاري تحميل عروض اللايف..." : "Loading live packs..."}
+                  </p>
+                </div>
+              ) : livePacks.length > 0 ? (
+                <LivePacksSection
+                  packs={livePacks}
+                  textColor={currentSection?.text_color}
+                  title={categoryName}
+                  subtitle={
+                    language === "ar"
+                      ? currentSection?.subtitle_ar || undefined
+                      : currentSection?.subtitle_en || undefined
+                  }
+                />
+              ) : (
+                <div className="text-center py-20 px-4 bg-background-soft/60 rounded-3xl border border-primary-earth/10 max-w-2xl mx-auto my-8">
+                  <div className="w-14 h-14 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto mb-4 text-2xl">
+                    🔥
+                  </div>
+                  <h3
+                    className="text-xl sm:text-2xl font-serif font-bold text-primary-earth mb-2"
+                    style={{ color: currentSection?.text_color || undefined }}
+                  >
+                    {language === "ar"
+                      ? "لا توجد عروض لايف نشطة حالياً"
+                      : language === "fr"
+                      ? "Aucune offre Live active pour le moment"
+                      : "No Active Live Offers Right Now"}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-primary-earth/70 max-w-md mx-auto leading-relaxed">
+                    {language === "ar"
+                      ? "تابعوا بثنا المباشر القادم للاستفادة من أقوى الباقات والعروض الترويجية الحصرية."
+                      : language === "fr"
+                      ? "Suivez notre prochain Live pour profiter de nos meilleures offres exclusives."
+                      : "Stay tuned for our next live stream to take advantage of exclusive packs and special discounts."}
+                  </p>
+                </div>
+              )}
+
+              {/* If products also exist under this category, show them below the live packs */}
+              {products.length > 0 && (
+                <div className="pt-8 border-t border-primary-earth/10">
+                  <h2 className="text-xl font-serif font-bold text-primary-earth mb-6">
+                    {language === "ar" ? "منتجات ذات صلة" : language === "fr" ? "Produits associés" : "Related Products"}
+                  </h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-5 sm:gap-6">
+                    {visibleProducts.map((product) => (
+                      <ProductCard key={product.id} product={product} layoutMode="vertical" />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Dynamic Product Grid based on selected Look */}
+              <div
+                className={
+                  viewMode === "banner"
+                    ? "grid grid-cols-1 gap-8 sm:gap-10" // Wide Banner (Horizontal)
+                    : "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-5 sm:gap-6" // Vertical (Default)
+                }
+              >
+                {products.length > 0 ? (
+                  visibleProducts.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      layoutMode={viewMode}
+                    />
+                  ))
+                ) : (
+                  <div className="col-span-full py-20 text-center">
+                    <p className="text-primary-earth/40">
+                      {language === "ar"
+                        ? "لم يتم العثور على منتجات"
+                        : language === "fr"
+                          ? "Aucun produit trouvé"
+                          : "No products found"}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <LoadMoreButton
+                onClick={showMoreProducts}
+                hasMore={hasMoreProducts}
+                loaded={visibleProducts.length}
+                total={products.length}
+                className="mt-14"
+              />
+            </>
+          )}
         </div>
       </div>
     </>

@@ -9,8 +9,14 @@ import { normalizeLinkUrl } from '../lib/urlUtils';
 import { Language } from '../translations';
 import { fetchWithCache, getCachedSync } from '../lib/apiCache';
 
+interface NavLinkItem {
+  to: string;
+  label: string;
+  textColor?: string;
+}
+
 // Parse nav links from a sections API response for the current language.
-function parseNavLinks(data: any, lang: string) {
+function parseNavLinks(data: any, lang: string): NavLinkItem[] | null {
   if (!data?.success || !data.sections) return null;
   return data.sections
     .filter((s: any) => Number(s.is_visible) === 1 && s.type === 'link')
@@ -18,6 +24,7 @@ function parseNavLinks(data: any, lang: string) {
     .map((s: any) => ({
       to: normalizeLinkUrl(s.link_url),
       label: lang === 'ar' ? (s.title_ar || s.title_en) : lang === 'fr' ? (s.title_fr || s.title_en) : s.title_en || s.title_ar,
+      textColor: s.text_color || undefined,
     }));
 }
 
@@ -92,7 +99,7 @@ export default function Navbar() {
   const cachedSectionsSync = getCachedSync<any>('/api/sections');
   const initialNavLinks = cachedSectionsSync ? (parseNavLinks(cachedSectionsSync, language) ?? null) : null;
 
-  const [dynamicNavLinks, setDynamicNavLinks] = useState<{ to: string, label: string }[] | null>(initialNavLinks);
+  const [dynamicNavLinks, setDynamicNavLinks] = useState<NavLinkItem[] | null>(initialNavLinks);
   const [fetchFailed, setFetchFailed] = useState(false);
 
   useEffect(() => {
@@ -259,21 +266,30 @@ export default function Navbar() {
             {/* Right side / Desktop Navigation */}
             <div className="flex items-center justify-end z-10 pl-4">
               <div className="flex items-center gap-3 lg:gap-4 xl:gap-7 flex-wrap lg:flex-nowrap justify-end">
-                {displayLinks.map((link) => (
-                  <Link 
-                    key={link.to}
-                    to={link.to} 
-                    onMouseEnter={() => handlePrefetchRoute(link.to)}
-                    onTouchStart={() => handlePrefetchRoute(link.to)}
-                    className={`relative text-[14px] xl:text-[15.5px] font-bold tracking-wider hover:text-accent-gold transition-colors duration-300 pb-2 text-primary-earth whitespace-nowrap ${location.pathname === link.to ? 'text-accent-gold' : 'text-primary-earth/70'}`}
-                    id={`desktop-nav-${link.to.replace(/\//g, '') || 'home'}`}
-                  >
-                    <span>{link.label}</span>
-                    {location.pathname === link.to && (
-                      <span className="absolute bottom-0 left-0 right-0 h-[3px] bg-accent-gold rounded-full" />
-                    )}
-                  </Link>
-                ))}
+                {displayLinks.map((link) => {
+                  const isActive = location.pathname === link.to;
+                  return (
+                    <Link 
+                      key={link.to}
+                      to={link.to} 
+                      onMouseEnter={() => handlePrefetchRoute(link.to)}
+                      onTouchStart={() => handlePrefetchRoute(link.to)}
+                      className={`relative text-[14px] xl:text-[15.5px] font-bold tracking-wider hover:text-accent-gold transition-colors duration-300 pb-2 whitespace-nowrap ${isActive ? 'text-accent-gold' : 'text-primary-earth/70'}`}
+                      id={`desktop-nav-${link.to.replace(/\//g, '') || 'home'}`}
+                      style={{
+                        color: !isActive && link.textColor ? link.textColor : undefined,
+                      }}
+                    >
+                      <span>{link.label}</span>
+                      {isActive && (
+                        <span
+                          className="absolute bottom-0 left-0 right-0 h-[3px] bg-accent-gold rounded-full"
+                          style={{ backgroundColor: link.textColor || undefined }}
+                        />
+                      )}
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -282,18 +298,25 @@ export default function Navbar() {
         {/* Persistent Mobile Bar - Horizontal scrolling links */}
         <div id="mobile-navigation-bar" className="lg:hidden border-t border-primary-earth/5 bg-background-soft/80 backdrop-blur-md overflow-x-auto no-scrollbar">
           <div className="flex items-center px-4 h-14 min-w-max gap-8 justify-center">
-            {navLinksToUse.map((link) => (
-              <Link 
-                key={link.to}
-                to={link.to} 
-                onMouseEnter={() => handlePrefetchRoute(link.to)}
-                onTouchStart={() => handlePrefetchRoute(link.to)}
-                id={`mobile-nav-${link.to.replace(/\//g, '') || 'home'}`}
-                className={`text-[15.5px] sm:text-[17px] font-bold tracking-wide hover:text-accent-gold transition-colors block py-3.5 ${location.pathname === link.to ? 'text-accent-gold border-b-2 border-accent-gold' : 'text-primary-earth'}`}
-              >
-                {link.label}
-              </Link>
-            ))}
+            {navLinksToUse.map((link) => {
+              const isActive = location.pathname === link.to;
+              return (
+                <Link 
+                  key={link.to}
+                  to={link.to} 
+                  onMouseEnter={() => handlePrefetchRoute(link.to)}
+                  onTouchStart={() => handlePrefetchRoute(link.to)}
+                  id={`mobile-nav-${link.to.replace(/\//g, '') || 'home'}`}
+                  className={`text-[15.5px] sm:text-[17px] font-bold tracking-wide hover:text-accent-gold transition-colors block py-3.5 ${isActive ? 'text-accent-gold border-b-2 border-accent-gold' : 'text-primary-earth'}`}
+                  style={{
+                    color: !isActive && link.textColor ? link.textColor : undefined,
+                    borderColor: isActive && link.textColor ? link.textColor : undefined,
+                  }}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
           </div>
         </div>
       </nav>
