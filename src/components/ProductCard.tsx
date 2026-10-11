@@ -399,10 +399,45 @@ function ProductCardInner({ product, layoutMode = "grid" }: ProductCardProps) {
   const isAr = language === "ar";
   const isFr = language === "fr";
   const [isAdded, setIsAdded] = React.useState(false);
+  const [selectedSizeIndex, setSelectedSizeIndex] = React.useState(0);
 
-  if (!product) return null;
+  const parseSizes = (raw: any): ProductSizeVariant[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
 
-  const displayPriceNum = Math.round(parseFloat(String(product.price || "0").replace(/[^\d.]/g, "")) || 0);
+  const effectiveSizes = parseSizes(product?.sizes);
+  const activeVariant = effectiveSizes.length > 0 && selectedSizeIndex < effectiveSizes.length
+    ? effectiveSizes[selectedSizeIndex]
+    : null;
+
+  const currentPrice = activeVariant ? activeVariant.price : (product.price || "0");
+  const currentOriginalPrice = activeVariant ? (activeVariant.originalPrice || undefined) : product.originalPrice;
+  const isCurrentSale = activeVariant
+    ? (Boolean(activeVariant.originalPrice) && (parseFloat(String(activeVariant.originalPrice).replace(/[^\d.]/g, "")) > (parseFloat(String(activeVariant.price).replace(/[^\d.]/g, "")) || 0)))
+    : Boolean(product.isSale);
+
+  const displayPriceNum = Math.round(parseFloat(String(currentPrice).replace(/[^\d.]/g, "")) || 0);
+
+  const itemToAdd: Product = activeVariant
+    ? {
+        ...product,
+        price: activeVariant.price,
+        originalPrice: activeVariant.originalPrice,
+        selectedSize: activeVariant,
+        volume: activeVariant.size,
+        size_label: activeVariant.size,
+      }
+    : product;
 
   // Retrieve premium metadata matching the product ID
   const prodName = String(product.name || "");
@@ -439,8 +474,9 @@ function ProductCardInner({ product, layoutMode = "grid" }: ProductCardProps) {
   // Empty means nothing was entered, and the old fallbacks stand unchanged.
   const storedSize = String(product.size_label || product.volume || "").trim();
   const packSizeLabel = isAr ? "طقم كامل" : "Full Kit";
-  const sizeBadge = storedSize || premium.volume;
-  const sizeCapsule = storedSize || (isPack ? packSizeLabel : premium.volume);
+  const activeSizeStr = activeVariant ? activeVariant.size : storedSize;
+  const sizeBadge = activeSizeStr || premium.volume;
+  const sizeCapsule = activeSizeStr || (isPack ? packSizeLabel : premium.volume);
   const showSize = product.show_size !== false && (product as any).show_size !== 0 && (product as any).show_size !== "0" && (product as any).showSize !== false;
 
   // Size text ("4 x 50 ml", "100ml") is always written in Latin digits/letters,
@@ -453,6 +489,39 @@ function ProductCardInner({ product, layoutMode = "grid" }: ProductCardProps) {
   // at only one of the five spots that render a size string; the other four
   // were still exposed to the same reordering.
   const renderSizeText = (value: string) => (isAr ? <span dir="ltr">{value}</span> : value);
+
+  const renderSizePills = () => {
+    if (!effectiveSizes || effectiveSizes.length <= 1) return null;
+    return (
+      <div 
+        className="flex items-center justify-center gap-1.5 flex-wrap my-2.5 z-20 relative"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      >
+        {effectiveSizes.map((variant, idx) => {
+          const isSelected = idx === selectedSizeIndex;
+          return (
+            <button
+              key={idx}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setSelectedSizeIndex(idx);
+              }}
+              className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold font-mono transition-all duration-200 cursor-pointer select-none ${
+                isSelected
+                  ? 'bg-accent-gold text-gray-900 shadow-md ring-1 ring-accent-gold scale-105 font-black'
+                  : 'bg-white/10 hover:bg-white/20 text-white/80 border border-white/10'
+              }`}
+              title={`${variant.size} • ${variant.price}`}
+            >
+              {variant.size}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
 
   const outOfStockText = language === 'ar' ? (storeSettings?.outOfStockTextAr || "نفذت الكمية") : (language === 'fr' ? (storeSettings?.outOfStockTextFr || "Rupture") : (storeSettings?.outOfStockTextEn || "Out of Stock"));
 
@@ -495,9 +564,9 @@ function ProductCardInner({ product, layoutMode = "grid" }: ProductCardProps) {
 
   // Calculate discount string for top-left label
   let discountStr = "";
-  if (product.isSale && product.originalPrice) {
+  if (isCurrentSale && currentOriginalPrice) {
     const p = displayPriceNum;
-    const op = parseFloat(String(product.originalPrice).replace(/[^\d.]/g, ""));
+    const op = parseFloat(String(currentOriginalPrice).replace(/[^\d.]/g, ""));
     if (!isNaN(p) && !isNaN(op) && op > 0) {
       const pct = Math.round(((op - p) / op) * 100);
       if (language === "ar") {
@@ -509,7 +578,7 @@ function ProductCardInner({ product, layoutMode = "grid" }: ProductCardProps) {
       }
     }
   }
-  if (!discountStr && product.isSale) {
+  if (!discountStr && isCurrentSale) {
     discountStr = isAr ? "تخفيض" : language === "fr" ? "SOLDE" : "SALE";
   }
 
@@ -649,7 +718,7 @@ function ProductCardInner({ product, layoutMode = "grid" }: ProductCardProps) {
           <button
             onClick={() => {
               if (product.isAvailable !== false) {
-                addToCart(product);
+                addToCart(itemToAdd);
                 setIsAdded(true);
                 setTimeout(() => setIsAdded(false), 1200);
               }
@@ -732,7 +801,7 @@ function ProductCardInner({ product, layoutMode = "grid" }: ProductCardProps) {
           <button
             onClick={() => {
               if (product.isAvailable !== false) {
-                addToCart(product);
+                addToCart(itemToAdd);
                 setIsAdded(true);
                 setTimeout(() => setIsAdded(false), 1200);
               }
@@ -847,7 +916,7 @@ function ProductCardInner({ product, layoutMode = "grid" }: ProductCardProps) {
               <button
                 onClick={() => {
                   if (product.isAvailable !== false) {
-                    addToCart(product);
+                    addToCart(itemToAdd);
                     setIsAdded(true);
                     setTimeout(() => setIsAdded(false), 1200);
                   }
@@ -962,7 +1031,7 @@ function ProductCardInner({ product, layoutMode = "grid" }: ProductCardProps) {
           <button
             onClick={() => {
               if (product.isAvailable !== false) {
-                addToCart(product);
+                addToCart(itemToAdd);
                 setIsAdded(true);
                 setTimeout(() => setIsAdded(false), 1200);
               }
@@ -1125,7 +1194,7 @@ function ProductCardInner({ product, layoutMode = "grid" }: ProductCardProps) {
                   <button
                     onClick={() => {
                       if (product.isAvailable !== false) {
-                        addToCart(product);
+                        addToCart(itemToAdd);
                         setIsAdded(true);
                         setTimeout(() => setIsAdded(false), 1200);
                       }
@@ -1276,7 +1345,7 @@ function ProductCardInner({ product, layoutMode = "grid" }: ProductCardProps) {
             <button
               onClick={() => {
                 if (product.isAvailable !== false) {
-                  addToCart(product);
+                  addToCart(itemToAdd);
                   setIsAdded(true);
                   setTimeout(() => setIsAdded(false), 1200);
                 }
@@ -1391,6 +1460,9 @@ function ProductCardInner({ product, layoutMode = "grid" }: ProductCardProps) {
               </div>
             )}
 
+            {/* Size Variant Switcher */}
+            {renderSizePills()}
+
             {/* Divider check-capsule */}
             <div className="w-full border-t border-white/5 my-4.5" />
 
@@ -1407,13 +1479,15 @@ function ProductCardInner({ product, layoutMode = "grid" }: ProductCardProps) {
                   {/* A stored size is printed verbatim — the admin already typed
                       the spacing they wanted. The "ml" -> " ml" fixup only applies
                       to the hardcoded fallbacks, which are written as "50ml". */}
-                  {storedSize
-                    ? renderSizeText(storedSize)
-                    : isPack
-                      ? isAr
-                        ? "طقم كامل"
-                        : "Full Kit"
-                      : renderSizeText(premium.volume.replace("ml", " ml"))}
+                  {activeVariant
+                    ? renderSizeText(activeVariant.size)
+                    : (storedSize
+                      ? renderSizeText(storedSize)
+                      : isPack
+                        ? isAr
+                          ? "طقم كامل"
+                          : "Full Kit"
+                        : renderSizeText(premium.volume.replace("ml", " ml")))}
                 </div>
               )}
 
@@ -1438,7 +1512,7 @@ function ProductCardInner({ product, layoutMode = "grid" }: ProductCardProps) {
           <button
             onClick={() => {
               if (product.isAvailable !== false) {
-                addToCart(product);
+                addToCart(itemToAdd);
                 setIsAdded(true);
                 setTimeout(() => setIsAdded(false), 1200);
               }

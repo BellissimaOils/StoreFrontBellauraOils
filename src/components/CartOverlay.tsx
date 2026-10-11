@@ -276,8 +276,10 @@ export default function CartOverlay({ isOpen, onClose }: CartOverlayProps) {
                   </button>
                 </div>
               ) : (
-                cart.map((item) => (
-                  <div key={item.id} className="flex gap-4 items-center py-3 border-b border-primary-earth/5 last:border-b-0 pb-4">
+                cart.map((item) => {
+                  const itemKey = item.cartItemId || (item.selectedSize?.size ? `${item.id}__size_${item.selectedSize.size}` : item.id);
+                  return (
+                  <div key={itemKey} className="flex gap-4 items-center py-3 border-b border-primary-earth/5 last:border-b-0 pb-4">
                     <div className="w-[72px] h-[72px] bg-[#0a0a0a] rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden border border-primary-earth/5">
                       {item.image && (
                         <img 
@@ -302,6 +304,13 @@ export default function CartOverlay({ isOpen, onClose }: CartOverlayProps) {
                           <p className="text-xs text-primary-earth/50 uppercase tracking-widest">{item.category}</p>
                         </div>
                         <h3 className="text-base font-semibold text-primary-earth leading-snug line-clamp-2">{item.name}</h3>
+                        {item.selectedSize?.size && (
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <span className="inline-flex items-center text-[10.5px] font-bold text-accent-gold bg-accent-gold/10 px-2 py-0.5 rounded-md border border-accent-gold/20 font-mono">
+                              {item.selectedSize.size}
+                            </span>
+                          </div>
+                        )}
                         {item.isLivePack && item.includedProducts && item.includedProducts.length > 0 && (
                           <div className="mt-2 text-[11px] text-primary-earth/70 bg-[#faf8f5] p-2 rounded-lg border border-primary-earth/10">
                             <span className="font-bold text-[10px] text-accent-gold block mb-1">
@@ -321,14 +330,14 @@ export default function CartOverlay({ isOpen, onClose }: CartOverlayProps) {
                       <div className="flex justify-between items-center mt-2 gap-2">
                         <div className="flex items-center gap-3 border border-primary-earth/10 px-2 py-1 rounded bg-white flex-shrink-0">
                           <button 
-                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                            onClick={() => updateQuantity(itemKey, item.quantity - 1)}
                             className="p-0.5 hover:text-accent-gold transition-colors text-primary-earth/60"
                           >
                             <Minus className="w-3 h-3" />
                           </button>
                           <span className="text-sm w-4 text-center font-semibold text-primary-earth">{item.quantity}</span>
                           <button 
-                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                            onClick={() => updateQuantity(itemKey, item.quantity + 1)}
                             className="p-0.5 hover:text-accent-gold transition-colors text-primary-earth/60"
                           >
                             <Plus className="w-3 h-3" />
@@ -361,7 +370,8 @@ export default function CartOverlay({ isOpen, onClose }: CartOverlayProps) {
                       </div>
                     </div>
                   </div>
-                ))
+                );
+                })
               )}
             </div>
 

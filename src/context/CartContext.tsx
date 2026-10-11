@@ -78,9 +78,28 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const matchingProduct = products.find(p => p.id === item.id);
         if (matchingProduct) {
-          const hasPriceDiff = matchingProduct.price !== item.price;
-          const hasOrigPriceDiff = matchingProduct.originalPrice !== item.originalPrice;
-          const hasSaleDiff = matchingProduct.isSale !== item.isSale;
+          let newPrice = matchingProduct.price;
+          let newOrigPrice = matchingProduct.originalPrice;
+          let newIsSale = matchingProduct.isSale;
+
+          if (item.selectedSize) {
+            const matchedSize = matchingProduct.sizes?.find(s => s.size === item.selectedSize?.size);
+            if (matchedSize) {
+              newPrice = matchedSize.price;
+              newOrigPrice = matchedSize.originalPrice || undefined;
+              const nP = parseFloat(String(matchedSize.price).replace(/[^\d.]/g, '')) || 0;
+              const nOP = parseFloat(String(matchedSize.originalPrice || '').replace(/[^\d.]/g, '')) || 0;
+              newIsSale = nOP > nP;
+            } else {
+              newPrice = item.price;
+              newOrigPrice = item.originalPrice;
+              newIsSale = item.isSale;
+            }
+          }
+
+          const hasPriceDiff = newPrice !== item.price;
+          const hasOrigPriceDiff = newOrigPrice !== item.originalPrice;
+          const hasSaleDiff = newIsSale !== item.isSale;
           const hasNameDiff = matchingProduct.name !== item.name;
           const hasImageDiff = matchingProduct.image !== item.image;
 
@@ -88,9 +107,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
             changed = true;
             return {
               ...item,
-              price: matchingProduct.price,
-              originalPrice: matchingProduct.originalPrice,
-              isSale: matchingProduct.isSale,
+              price: newPrice,
+              originalPrice: newOrigPrice,
+              isSale: newIsSale,
               name: matchingProduct.name,
               image: matchingProduct.image
             };
@@ -129,14 +148,22 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [appliedCoupon]);
 
   const addToCart = useCallback((product: Product, qty: number = 1) => {
+    const itemCartKey = product.selectedSize?.size
+      ? `${product.id}__size_${product.selectedSize.size}`
+      : product.id;
+
     setCart(prevCart => {
-      const existingItem = prevCart.find(item => item.id === product.id);
+      const existingItem = prevCart.find(item =>
+        (item.cartItemId || (item.selectedSize?.size ? `${item.id}__size_${item.selectedSize.size}` : item.id)) === itemCartKey
+      );
       if (existingItem) {
         return prevCart.map(item =>
-          item.id === product.id ? { ...item, quantity: item.quantity + qty } : item
+          (item.cartItemId || (item.selectedSize?.size ? `${item.id}__size_${item.selectedSize.size}` : item.id)) === itemCartKey
+            ? { ...item, quantity: item.quantity + qty }
+            : item
         );
       }
-      return [...prevCart, { ...product, quantity: qty }];
+      return [...prevCart, { ...product, cartItemId: itemCartKey, quantity: qty }];
     });
   }, []);
 
@@ -179,19 +206,26 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsCartOpen(true);
   }, []);
 
-  const removeFromCart = useCallback((productId: string) => {
-    setCart(prevCart => prevCart.filter(item => item.id !== productId));
+  const removeFromCart = useCallback((itemKey: string) => {
+    setCart(prevCart => prevCart.filter(item => {
+      const k = item.cartItemId || (item.selectedSize?.size ? `${item.id}__size_${item.selectedSize.size}` : item.id);
+      return k !== itemKey && item.id !== itemKey;
+    }));
   }, []);
 
-  const updateQuantity = useCallback((productId: string, quantity: number) => {
+  const updateQuantity = useCallback((itemKey: string, quantity: number) => {
     if (quantity <= 0) {
-      setCart(prevCart => prevCart.filter(item => item.id !== productId));
+      setCart(prevCart => prevCart.filter(item => {
+        const k = item.cartItemId || (item.selectedSize?.size ? `${item.id}__size_${item.selectedSize.size}` : item.id);
+        return k !== itemKey && item.id !== itemKey;
+      }));
       return;
     }
     setCart(prevCart =>
-      prevCart.map(item =>
-        item.id === productId ? { ...item, quantity } : item
-      )
+      prevCart.map(item => {
+        const k = item.cartItemId || (item.selectedSize?.size ? `${item.id}__size_${item.selectedSize.size}` : item.id);
+        return (k === itemKey || item.id === itemKey) ? { ...item, quantity } : item;
+      })
     );
   }, []);
 

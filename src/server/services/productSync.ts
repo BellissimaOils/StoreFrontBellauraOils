@@ -131,6 +131,17 @@ export function createProductSyncService(state: ProductSyncState) {
           slug: p.slug || "",
           show_size: p.show_size !== 0 && p.show_size !== "0" && p.show_size !== false && (p as any).showSize !== false ? 1 : 0,
           showSize: p.show_size !== 0 && p.show_size !== "0" && p.show_size !== false && (p as any).showSize !== false,
+          sizes: (() => {
+            if (p.sizes) {
+              try {
+                const s = typeof p.sizes === "string" ? JSON.parse(p.sizes) : p.sizes;
+                if (Array.isArray(s) && s.length > 0) {
+                  return s.filter((item: any) => item && typeof item.size === "string" && item.size.trim() !== "");
+                }
+              } catch {}
+            }
+            return Array.isArray(fp?.sizes) ? fp.sizes : undefined;
+          })(),
         };
       });
 
@@ -287,6 +298,7 @@ export function createProductSyncService(state: ProductSyncState) {
           seo_changefreq: p.seo_changefreq || "",
           slug: p.slug || "",
           show_size: p.show_size === 0 || p.show_size === "0" || p.show_size === false || (p as any).showSize === false ? 0 : 1,
+          sizes: p.sizes ? (typeof p.sizes === "string" ? p.sizes : JSON.stringify(p.sizes)) : null,
         };
       });
 

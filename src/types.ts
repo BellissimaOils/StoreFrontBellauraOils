@@ -52,6 +52,15 @@ export interface Product {
   isPack?: boolean;
   /** The ids of the individual products bundled inside this pack, chosen in the admin. Empty/absent when `isPack` is false. */
   packProductIds?: string[];
+  sizes?: ProductSizeVariant[];
+  selectedSize?: ProductSizeVariant;
+}
+
+export interface ProductSizeVariant {
+  size: string;
+  price: string;
+  originalPrice?: string;
+  isAvailable?: boolean;
 }
 
 export interface LivePack {
@@ -67,6 +76,7 @@ export interface LivePack {
 }
 
 export interface CartItem extends Product {
+  cartItemId?: string;
   quantity: number;
   isLivePack?: boolean;
   livePackId?: string;

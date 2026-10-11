@@ -255,6 +255,18 @@ export function mapD1RowToProductSchema(d1p: any) {
     }
   }
 
+  let parsedSizes: any[] | undefined = undefined;
+  if (d1p.sizes) {
+    try {
+      const s = typeof d1p.sizes === "string" ? JSON.parse(d1p.sizes) : d1p.sizes;
+      if (Array.isArray(s) && s.length > 0) {
+        parsedSizes = s.filter((item: any) => item && typeof item.size === "string" && item.size.trim() !== "");
+      }
+    } catch {
+      parsedSizes = undefined;
+    }
+  }
+
   return {
     id: d1Id,
     name: d1p.name || "",
@@ -291,6 +303,7 @@ export function mapD1RowToProductSchema(d1p: any) {
     showSize: d1p.show_size !== 0 && d1p.show_size !== "0" && d1p.show_size !== false && (d1p as any).showSize !== false,
     isPack: isPackFlag,
     packProductIds,
+    sizes: (parsedSizes && parsedSizes.length > 0) ? parsedSizes : undefined,
   };
 }
 

@@ -92,10 +92,10 @@ export function createProductRouter(state: ProductsState) {
       let sql: string;
       let sqlParams: any[];
       if (targetNbr) {
-        sql = `SELECT p.description, p.benefits, p.usage, p.ingredients, p.show_size, pd.tag FROM products p LEFT JOIN products_Data pd ON p.product_nbr = pd.product_id WHERE p.product_nbr = ?;`;
+        sql = `SELECT p.description, p.benefits, p.usage, p.ingredients, p.show_size, p.sizes, pd.tag FROM products p LEFT JOIN products_Data pd ON p.product_nbr = pd.product_id WHERE p.product_nbr = ?;`;
         sqlParams = [targetNbr];
       } else {
-        sql = `SELECT p.description, p.benefits, p.usage, p.ingredients, p.show_size, pd.tag FROM products p LEFT JOIN products_Data pd ON p.product_nbr = pd.product_id WHERE p.name LIKE ?;`;
+        sql = `SELECT p.description, p.benefits, p.usage, p.ingredients, p.show_size, p.sizes, pd.tag FROM products p LEFT JOIN products_Data pd ON p.product_nbr = pd.product_id WHERE p.name LIKE ?;`;
         sqlParams = [`%${localProduct?.name_en || id}%`];
       }
 
@@ -124,6 +124,16 @@ export function createProductRouter(state: ProductsState) {
         ? rawShowSize !== 0 && rawShowSize !== "0" && rawShowSize !== false
         : true;
 
+      let sizesArr = localProduct?.sizes;
+      if (row?.sizes) {
+        try {
+          const parsed = typeof row.sizes === "string" ? JSON.parse(row.sizes) : row.sizes;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            sizesArr = parsed;
+          }
+        } catch {}
+      }
+
       res.json({
         success: true,
         data: {
@@ -132,6 +142,7 @@ export function createProductRouter(state: ProductsState) {
           usage: row?.usage ?? localProduct?.usage ?? "",
           ingredients: row?.ingredients ?? localProduct?.ingredients ?? "",
           tag: row?.tag ?? localProduct?.tag ?? "",
+          sizes: sizesArr,
           showDescription: (row as any)?.show_description !== undefined
             ? (row as any).show_description !== 0 && (row as any).show_description !== false
             : (localProduct ? localProduct.showDescription !== false : true),
@@ -161,6 +172,7 @@ export function createProductRouter(state: ProductsState) {
           usage: localProduct?.usage || "",
           ingredients: localProduct?.ingredients || "",
           tag: localProduct?.tag || "",
+          sizes: localProduct?.sizes,
           showDescription: localProduct ? localProduct.showDescription !== false : true,
           showBenefits: localProduct ? localProduct.showBenefits !== false : true,
           showUsage: localProduct ? localProduct.showUsage !== false : true,
@@ -274,6 +286,15 @@ export function createProductRouter(state: ProductsState) {
               return Array.isArray(parsed) ? parsed.map((id: any) => String(id)) : [];
             } catch {
               return [];
+            }
+          })(),
+          sizes: (() => {
+            if (!r.sizes) return undefined;
+            try {
+              const parsed = typeof r.sizes === "string" ? JSON.parse(r.sizes) : r.sizes;
+              return Array.isArray(parsed) && parsed.length > 0 ? parsed : undefined;
+            } catch {
+              return undefined;
             }
           })(),
         };

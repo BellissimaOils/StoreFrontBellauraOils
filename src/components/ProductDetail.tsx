@@ -141,6 +141,7 @@ export default function ProductDetail() {
       showIngredients: extendedData.showIngredients !== undefined ? extendedData.showIngredients : (product.showIngredients !== undefined ? product.showIngredients : true),
       show_size: extendedData.show_size !== undefined ? (extendedData.show_size !== 0 && extendedData.show_size !== "0" && extendedData.show_size !== false && (extendedData as any).showSize !== false) : (product.show_size !== undefined ? (product.show_size !== 0 && product.show_size !== "0" && product.show_size !== false && (product as any).showSize !== false) : true),
       showSize: extendedData.showSize !== undefined ? extendedData.showSize : (product.showSize !== undefined ? product.showSize : true),
+      sizes: extendedData.sizes || product.sizes,
     };
   }, [product, extendedData]);
 
@@ -224,6 +225,11 @@ export default function ProductDetail() {
   const [zoomLevel, setZoomLevel] = useState(2.5); // Initial zoom scale for the side panel
 
   const [qty, setQty] = useState(1);
+  const [selectedSizeIndex, setSelectedSizeIndex] = useState<number>(0);
+
+  useEffect(() => {
+    setSelectedSizeIndex(0);
+  }, [decodedId]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // THIS IS THE LAST HOOK. Nothing below the early returns may call one.
@@ -316,14 +322,42 @@ export default function ProductDetail() {
     arabicName = parts[1] ? parts[1].replace(')', '') : '';
   }
 
-  // (A local getBenefitsList used to sit here but was never called — the
-  // benefits shown on this page are resolved above and rendered by
-  // ProductAccordions. Removed; the shared parseBenefitsList in ../types is
-  // the single implementation now.)
+  const parseSizes = (raw: any): ProductSizeVariant[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
 
-  // categoryKey / catTranslation / displayCategory were removed along with the
-  // "BELLAURA OILS • category • tag" meta line above the product name — they
-  // existed solely to feed that line's category chip and became dead code.
+  const effectiveSizes = parseSizes(displayProduct?.sizes || product?.sizes || (extendedData as any)?.sizes);
+  const hasSizes = effectiveSizes.length > 0;
+  const activeVariant = hasSizes && selectedSizeIndex < effectiveSizes.length
+    ? effectiveSizes[selectedSizeIndex]
+    : null;
+
+  const currentPrice = activeVariant ? activeVariant.price : product.price;
+  const currentOriginalPrice = activeVariant ? (activeVariant.originalPrice || null) : (product.isSale && product.originalPrice ? product.originalPrice : null);
+  const isCurrentSale = activeVariant
+    ? (Boolean(activeVariant.originalPrice) && getCleanPrice(activeVariant.originalPrice) > getCleanPrice(activeVariant.price))
+    : (Boolean(product.isSale) && Boolean(product.originalPrice));
+
+  const itemToAdd: Product = activeVariant
+    ? {
+        ...product,
+        price: activeVariant.price,
+        originalPrice: activeVariant.originalPrice,
+        selectedSize: activeVariant,
+        volume: activeVariant.size,
+        size_label: activeVariant.size,
+      }
+    : product;
 
   const handleCheckoutNow = () => {
     navigate('/checkout');
@@ -492,11 +526,11 @@ export default function ProductDetail() {
                 <span>{language === 'ar' ? 'اضغط للتكبير' : 'Click to enlarge'}</span>
               </div>
 
-              {product.isSale && (
+              {isCurrentSale && (
                 <div className="absolute top-4 left-4 rtl:right-4 rtl:left-auto bg-red-600 text-white text-[11px] uppercase font-black tracking-widest px-4 py-2 z-20 shadow-md rounded-[8px]">
-                  {product.originalPrice ? (() => {
-                    const p = getCleanPrice(product.price);
-                    const op = getCleanPrice(product.originalPrice);
+                  {currentOriginalPrice ? (() => {
+                    const p = getCleanPrice(currentPrice);
+                    const op = getCleanPrice(currentOriginalPrice);
                     if (p > 0 && op > 0) {
                       return `-${Math.round(((op - p) / op) * 100)}%`;
                     }
@@ -654,18 +688,82 @@ export default function ProductDetail() {
             )}
 
             {/* Minimal Pricing Board */}
-            <div className="mb-6 flex flex-col gap-1 mt-3">
+            <div className="mb-4 flex flex-col gap-1 mt-3">
               <div className={`flex items-baseline gap-4 text-[17px] ${isAr ? 'justify-end' : 'justify-start'}`} dir="ltr">
-                <span className="tracking-wide text-[24px] font-black text-accent-gold drop-shadow-sm">
-                  {Math.round(getCleanPrice(product.price))} <span className="text-[16px] font-medium tracking-normal text-accent-gold/80">DH</span>
+                <span className="tracking-wide text-[26px] font-black text-accent-gold drop-shadow-sm font-mono">
+                  {Math.round(getCleanPrice(currentPrice))} <span className="text-[16px] font-medium tracking-normal text-accent-gold/80">DH</span>
                 </span>
-                {product.isSale && product.originalPrice && (
-                  <span className="text-[15px] font-medium text-gray-400 line-through decoration-red-500/50">
-                    {Math.round(getCleanPrice(product.originalPrice))} DH
+                {isCurrentSale && currentOriginalPrice && (
+                  <span className="text-[15px] font-medium text-gray-400 line-through decoration-red-500/50 font-mono">
+                    {Math.round(getCleanPrice(currentOriginalPrice))} DH
                   </span>
                 )}
               </div>
             </div>
+
+            {/* Interactive Size Variant Selector */}
+            {hasSizes && (
+              <div className="mb-6 p-4 rounded-2xl bg-white border border-gray-200/80 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-2">
+                    <span>{isAr ? 'اختر الحجم:' : language === 'fr' ? 'Choisissez le format :' : 'Select Size:'}</span>
+                    {activeVariant && (
+                      <span className="text-accent-gold font-black bg-accent-gold/10 px-2.5 py-0.5 rounded-full border border-accent-gold/20 font-mono text-[11px]">
+                        {activeVariant.size}
+                      </span>
+                    )}
+                  </span>
+                  {effectiveSizes.length > 1 && (
+                    <span className="text-[11px] text-gray-400 font-medium">
+                      {effectiveSizes.length} {isAr ? 'أحجام متوفرة' : language === 'fr' ? 'formats' : 'sizes'}
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  {effectiveSizes.map((variant, idx) => {
+                    const isSelected = idx === selectedSizeIndex;
+                    const vPrice = getCleanPrice(variant.price);
+                    const vOrigPrice = variant.originalPrice ? getCleanPrice(variant.originalPrice) : null;
+                    const hasDiscount = vOrigPrice && vOrigPrice > vPrice;
+
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setSelectedSizeIndex(idx)}
+                        className={`group relative flex flex-col p-3 rounded-xl border text-start rtl:text-right transition-all duration-200 cursor-pointer select-none ${
+                          isSelected
+                            ? 'border-accent-gold bg-accent-gold/10 text-gray-900 shadow-sm ring-2 ring-accent-gold/40'
+                            : 'border-gray-200 bg-white hover:border-accent-gold/40 hover:bg-gray-50/70 text-gray-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full mb-1">
+                          <span className={`text-[13px] font-bold tracking-tight ${isSelected ? 'text-gray-900' : 'text-gray-800'}`}>
+                            {variant.size}
+                          </span>
+                          <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center transition-all ${
+                            isSelected ? 'border-accent-gold bg-accent-gold' : 'border-gray-300 bg-transparent'
+                          }`}>
+                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                          </span>
+                        </div>
+                        <div className="flex items-baseline gap-1.5" dir="ltr">
+                          <span className={`text-[13px] font-black font-mono ${isSelected ? 'text-accent-gold' : 'text-gray-900'}`}>
+                            {vPrice} <span className="text-[10px] font-semibold text-gray-500">DH</span>
+                          </span>
+                          {hasDiscount && (
+                            <span className="text-[10px] text-gray-400 line-through font-mono">
+                              {vOrigPrice} DH
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Subtle premium store code and guarantee labels - removed based on user request */}
 
@@ -707,10 +805,10 @@ export default function ProductDetail() {
                 <button 
                   onClick={() => {
                     if (product.isAvailable !== false) {
-                      addToCart(product, qty);
+                      addToCart(itemToAdd, qty);
                       trackAddToCart({
-                        content_name: product.name_en || product.name || "",
-                        value: (parseFloat(String(product.price ?? "").replace(/[^\d.]/g, "")) || 0) * qty,
+                        content_name: `${product.name_en || product.name || ""}${activeVariant ? ` (${activeVariant.size})` : ''}`,
+                        value: (parseFloat(String(itemToAdd.price ?? "").replace(/[^\d.]/g, "")) || 0) * qty,
                         currency: "MAD",
                       });
                       setIsAdded(true);
@@ -805,17 +903,17 @@ export default function ProductDetail() {
               </div>
               <div className="flex-1 truncate">
                   <h3 className="text-white font-medium text-[15px] tracking-wide truncate">
-                    {product.name} {displayProduct?.show_size !== false && (displayProduct as any)?.show_size !== 0 && (displayProduct as any)?.show_size !== "0" && (displayProduct as any)?.showSize !== false && product.volume && <span dir="ltr">- {product.volume}</span>}
+                    {product.name} {activeVariant ? <span dir="ltr">- {activeVariant.size}</span> : (displayProduct?.show_size !== false && (displayProduct as any)?.show_size !== 0 && (displayProduct as any)?.show_size !== "0" && (displayProduct as any)?.showSize !== false && product.volume && <span dir="ltr">- {product.volume}</span>)}
                   </h3>
               </div>
               <div className="flex items-center gap-6 flex-shrink-0">
                  <button 
                     onClick={() => {
                       if (product.isAvailable !== false) {
-                        addToCart(product, qty);
+                        addToCart(itemToAdd, qty);
                         trackAddToCart({
-                          content_name: product.name_en || product.name || "",
-                          value: (parseFloat(String(product.price ?? "").replace(/[^\d.]/g, "")) || 0) * qty,
+                          content_name: `${product.name_en || product.name || ""}${activeVariant ? ` (${activeVariant.size})` : ''}`,
+                          value: (parseFloat(String(itemToAdd.price ?? "").replace(/[^\d.]/g, "")) || 0) * qty,
                           currency: "MAD",
                         });
                         setIsAdded(true);
@@ -827,7 +925,7 @@ export default function ProductDetail() {
                  >
                    <span>{isAdded ? (isAr ? 'تمت الإضافة' : 'AJOUTÉ') : (isAr ? `أضف إلى السلة` : `Ajouter au panier`)}</span>
                    <span className="text-white/60">•</span>
-                   <span>{getCleanPrice(product.price) * qty} DH</span>
+                   <span>{getCleanPrice(itemToAdd.price) * qty} DH</span>
                  </button>
               </div>
             </div>
