@@ -230,6 +230,15 @@ export function createProductRouter(state: ProductsState) {
         showSize: (p as any).show_size !== 0 && (p as any).show_size !== "0" && (p as any).show_size !== false && (p as any).showSize !== false,
         isPack: Boolean((p as any).isPack),
         packProductIds: Array.isArray((p as any).packProductIds) ? (p as any).packProductIds : [],
+        sizes: (() => {
+          if (!(p as any).sizes) return undefined;
+          try {
+            const parsed = typeof (p as any).sizes === "string" ? JSON.parse((p as any).sizes) : (p as any).sizes;
+            return Array.isArray(parsed) && parsed.length > 0 ? parsed : undefined;
+          } catch {
+            return undefined;
+          }
+        })(),
       })).filter((p) => p.in_catalog !== 0 && p.in_catalog !== "0");
       return res.json({ success: true, products: safeProducts, storeSettings: await buildPublicSettings() });
     }
