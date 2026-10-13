@@ -1118,6 +1118,33 @@ export async function ensureD1OrdersTablesExist(
       );
     }
 
+    // Safely attempt to add idempotency_key column and unique index in case table already exists
+    try {
+      await fetch(cloudflareUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sql: "ALTER TABLE orders ADD COLUMN idempotency_key TEXT;",
+        }),
+      });
+    } catch (e) {}
+
+    try {
+      await fetch(cloudflareUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sql: "CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_idempotency_key ON orders (idempotency_key);",
+        }),
+      });
+    } catch (e) {}
+
     const createItemsSql = `CREATE TABLE IF NOT EXISTS order_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       order_nbr TEXT NOT NULL,
@@ -1828,5 +1855,111 @@ export async function fetchLivePackByIdD1(id: string): Promise<any | null> {
   const sql = `SELECT * FROM live_packs WHERE id = ? LIMIT 1;`;
   const rows = await queryRealD1Rows(sql, [id]);
   return rows && rows.length > 0 ? rows[0] : null;
+}
+
+let d1AnalyticsTablesExistVerified = false;
+
+export async function ensureD1AnalyticsTablesExist(): Promise<boolean> {
+  if (d1AnalyticsTablesExistVerified) return true;
+
+  const rawAccountId = process.env.CLOUDFLARE_D1_ACCOUNT_ID;
+  const rawDatabaseId = process.env.CLOUDFLARE_D1_DATABASE_ID;
+  const rawApiToken = process.env.CLOUDFLARE_D1_API_TOKEN;
+
+  const accountId = sanitizeCredentials(rawAccountId);
+  const databaseId = sanitizeCredentials(rawDatabaseId);
+  const apiToken = sanitizeCredentials(rawApiToken);
+
+  if (!accountId || !databaseId || !apiToken || isMaskedValue(accountId)) return false;
+
+  const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
+  const headers = {
+    Authorization: `Bearer ${apiToken}`,
+    "Content-Type": "application/json",
+  };
+
+  const queries = [
+    `CREATE TABLE IF NOT EXISTS analytics_visitors (
+      id TEXT PRIMARY KEY,
+      first_touch_source TEXT DEFAULT 'Direct',
+      first_landing_page TEXT,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      total_sessions INTEGER DEFAULT 1,
+      total_orders INTEGER DEFAULT 0
+    );`,
+    `CREATE TABLE IF NOT EXISTS analytics_sessions (
+      id TEXT PRIMARY KEY,
+      visitor_id TEXT NOT NULL,
+      landing_page TEXT NOT NULL,
+      referrer TEXT,
+      source TEXT DEFAULT 'Direct',
+      utm_source TEXT,
+      utm_medium TEXT,
+      utm_campaign TEXT,
+      utm_content TEXT,
+      utm_term TEXT,
+      country TEXT,
+      city TEXT,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      duration_seconds INTEGER DEFAULT 0,
+      is_bounce INTEGER DEFAULT 1,
+      FOREIGN KEY (visitor_id) REFERENCES analytics_visitors(id) ON DELETE CASCADE
+    );`,
+    `CREATE TABLE IF NOT EXISTS analytics_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      visitor_id TEXT NOT NULL,
+      event_name TEXT NOT NULL,
+      path TEXT,
+      product_id TEXT,
+      product_name TEXT,
+      quantity INTEGER,
+      unit_price REAL,
+      active_duration_ms INTEGER DEFAULT 0,
+      metadata TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES analytics_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY (visitor_id) REFERENCES analytics_visitors(id) ON DELETE CASCADE
+    );`,
+    `CREATE TABLE IF NOT EXISTS analytics_order_attribution (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_nbr TEXT UNIQUE NOT NULL,
+      visitor_id TEXT,
+      session_id TEXT,
+      touch_type TEXT DEFAULT 'last',
+      source TEXT DEFAULT 'Direct',
+      utm_campaign TEXT,
+      total_mad REAL NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES analytics_sessions(id) ON DELETE SET NULL,
+      FOREIGN KEY (visitor_id) REFERENCES analytics_visitors(id) ON DELETE SET NULL
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_analytics_sessions_started_at ON analytics_sessions(started_at);`,
+    `CREATE INDEX IF NOT EXISTS idx_analytics_sessions_source ON analytics_sessions(source);`,
+    `CREATE INDEX IF NOT EXISTS idx_analytics_sessions_visitor_id ON analytics_sessions(visitor_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_analytics_events_session_id ON analytics_events(session_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_analytics_events_event_name_created ON analytics_events(event_name, created_at);`,
+    `CREATE INDEX IF NOT EXISTS idx_analytics_events_product_id ON analytics_events(product_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_analytics_order_attribution_created ON analytics_order_attribution(created_at);`,
+    `CREATE INDEX IF NOT EXISTS idx_analytics_order_attribution_source ON analytics_order_attribution(source);`,
+    `CREATE INDEX IF NOT EXISTS idx_analytics_order_attribution_order_nbr ON analytics_order_attribution(order_nbr);`,
+  ];
+
+  for (const sql of queries) {
+    try {
+      await fetch(cloudflareUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ sql }),
+      });
+    } catch (e) {
+      // Ignored if table or index already exists
+    }
+  }
+
+  d1AnalyticsTablesExistVerified = true;
+  return true;
 }
 

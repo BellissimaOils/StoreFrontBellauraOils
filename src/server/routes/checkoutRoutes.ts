@@ -104,6 +104,15 @@ interface CheckoutState {
 export function createCheckoutRouter(state: CheckoutState) {
   const router = express.Router();
 
+  // Public endpoint for frontend to read Turnstile Site Key at runtime
+  router.get("/checkout/turnstile-key", (_req, res) => {
+    const siteKey =
+      process.env.CLOUDFLARE_TURNSTILE_SITE_KEY ||
+      process.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY ||
+      "";
+    return res.json({ siteKey });
+  });
+
   router.post("/checkout", checkoutLimiter, async (req, res) => {
     const {
       idempotencyKey,
@@ -151,10 +160,109 @@ export function createCheckoutRouter(state: CheckoutState) {
       }
     };
 
-    // Reject empty carts outright. Without this, an empty/absent items array
-    // produced a real order row with a 0 subtotal (just the shipping fee),
-    // a review token, and Telegram/WhatsApp notifications — junk that then
-    // had to be cleaned up by hand.
+    // Cloudflare Turnstile Verification (Only on final COD order creation)
+    const turnstileToken = req.body.turnstileToken ? String(req.body.turnstileToken).trim() : "";
+    const turnstileSecret = process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY;
+    if (turnstileSecret) {
+      if (!turnstileToken) {
+        releasePendingKey();
+        return res.status(403).json({
+          success: false,
+          message: "Security verification is required to place an order.",
+          messageAr: "يرجى إكمال التحقق الأمني لتأكيد الطلب.",
+        });
+      }
+
+      try {
+        const turnstileRes = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            secret: turnstileSecret,
+            response: turnstileToken,
+          }),
+        });
+        const turnstileData = await turnstileRes.json();
+        if (!turnstileData.success) {
+          console.warn("[Turnstile] Verification failed:", turnstileData);
+          releasePendingKey();
+          return res.status(403).json({
+            success: false,
+            message: "Security verification failed. Please try again.",
+            messageAr: "فشل التحقق الأمني، يرجى إعادة المحاولة.",
+          });
+        }
+      } catch (turnstileErr) {
+        console.error("[Turnstile] Verification service error:", turnstileErr);
+        releasePendingKey();
+        return res.status(500).json({
+          success: false,
+          message: "Security verification unavailable. Please try again in a moment.",
+        });
+      }
+    }
+
+    // Persistent Idempotency Check in Cloudflare D1 (survives cold starts & multi-instances)
+    if (effectiveKey) {
+      const rawAccountId = process.env.CLOUDFLARE_D1_ACCOUNT_ID;
+      const rawDatabaseId = process.env.CLOUDFLARE_D1_DATABASE_ID;
+      const rawApiToken = process.env.CLOUDFLARE_D1_API_TOKEN;
+      const accountId = sanitizeCredentials(rawAccountId);
+      const databaseId = sanitizeCredentials(rawDatabaseId);
+      const apiToken = sanitizeCredentials(rawApiToken);
+
+      if (accountId && databaseId && apiToken && !isMaskedValue(accountId)) {
+        try {
+          const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
+          const checkRes = await fetch(cfUrl, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              sql: "SELECT id, order_nbr, total FROM orders WHERE idempotency_key = ? LIMIT 1;",
+              params: [effectiveKey],
+            }),
+          });
+          if (checkRes.ok) {
+            const checkData = await checkRes.json();
+            const rows = checkData.result?.[0]?.results || [];
+            if (Array.isArray(rows) && rows.length > 0) {
+              const existingOrder = rows[0];
+              console.log(
+                `[D1 Idempotency] Order already exists in D1 for key ${effectiveKey}: ${existingOrder.order_nbr}`,
+              );
+              const restoredResponse = {
+                success: true,
+                message: "Order placed successfully (restored from idempotent attempt).",
+                reviewLink: "/leave-a-review",
+                orderNbr: existingOrder.order_nbr,
+              };
+              idempotencyCache.set(effectiveKey, {
+                timestamp: Date.now(),
+                status: "completed",
+                response: restoredResponse,
+              });
+              return res.status(200).json(restoredResponse);
+            }
+          }
+        } catch (d1IdempErr) {
+          console.error("[D1 Idempotency Check Error]", d1IdempErr);
+        }
+      }
+    }
+
+    // Strict schema & customer structure validation
+    if (!customer || typeof customer !== "object" || Array.isArray(customer)) {
+      releasePendingKey();
+      return res.status(400).json({
+        success: false,
+        message: "Invalid customer information payload.",
+      });
+    }
+
+    // Strict cart array & quantity bounds
     if (!Array.isArray(items) || items.length === 0) {
       releasePendingKey();
       return res.status(400).json({
@@ -162,15 +270,68 @@ export function createCheckoutRouter(state: CheckoutState) {
         message: "Your cart is empty.",
       });
     }
-    if (!customer || !customer.phone) {
+
+    if (items.length > 50) {
       releasePendingKey();
       return res.status(400).json({
         success: false,
-        message: "A contact phone number is required to place an order.",
+        message: "Cart cannot contain more than 50 distinct items.",
       });
     }
 
-    const customerAddress = String(customer?.address || "").trim();
+    for (const it of items) {
+      if (!it || typeof it !== "object" || Array.isArray(it)) {
+        releasePendingKey();
+        return res.status(400).json({
+          success: false,
+          message: "Invalid cart item structure.",
+        });
+      }
+      const rawQty = Number(it.quantity);
+      if (!Number.isInteger(rawQty) || rawQty < 1 || rawQty > 20) {
+        releasePendingKey();
+        return res.status(400).json({
+          success: false,
+          message: "Item quantity must be a positive integer between 1 and 20.",
+        });
+      }
+      if (typeof it.id !== "string" && typeof it.id !== "number") {
+        releasePendingKey();
+        return res.status(400).json({
+          success: false,
+          message: "Invalid product item identifier.",
+        });
+      }
+      if (String(it.id).length > 100) {
+        releasePendingKey();
+        return res.status(400).json({
+          success: false,
+          message: "Item identifier exceeds maximum allowable length.",
+        });
+      }
+    }
+
+    // Strict customer text field bounds
+    const firstName = String(customer.firstName || "").trim();
+    const lastName = String(customer.lastName || "").trim();
+    if (firstName.length > 100 || lastName.length > 100) {
+      releasePendingKey();
+      return res.status(400).json({
+        success: false,
+        message: "Customer name must not exceed 100 characters.",
+      });
+    }
+
+    const customerPhone = String(customer.phone || "").trim();
+    if (!customerPhone || customerPhone.length < 8 || customerPhone.length > 25) {
+      releasePendingKey();
+      return res.status(400).json({
+        success: false,
+        message: "A valid contact phone number (8-25 characters) is required to place an order.",
+      });
+    }
+
+    const customerAddress = String(customer.address || "").trim();
     if (!customerAddress || customerAddress.length < 20) {
       releasePendingKey();
       return res.status(400).json({
@@ -179,7 +340,49 @@ export function createCheckoutRouter(state: CheckoutState) {
         messageAr: "يرجى كتابة عنوان مفصل (20 حرفًا على الأقل) لضمان دقة التوصيل.",
       });
     }
+    if (customerAddress.length > 300) {
+      releasePendingKey();
+      return res.status(400).json({
+        success: false,
+        message: "Delivery address must not exceed 300 characters.",
+        messageAr: "العنوان طويل جداً (الحد الأقصى 300 حرف).",
+      });
+    }
+
+    const customerCity = String(customer.city || "").trim();
+    if (customerCity.length > 100) {
+      releasePendingKey();
+      return res.status(400).json({
+        success: false,
+        message: "City name must not exceed 100 characters.",
+      });
+    }
+
+    const customerZip = String(customer.zip || "").trim();
+    if (customerZip.length > 30) {
+      releasePendingKey();
+      return res.status(400).json({
+        success: false,
+        message: "Postal code must not exceed 30 characters.",
+      });
+    }
+
+    const customerNotes = String(customer.comment || customer.notes || "").trim();
+    if (customerNotes.length > 500) {
+      releasePendingKey();
+      return res.status(400).json({
+        success: false,
+        message: "Notes must not exceed 500 characters.",
+      });
+    }
+
+    customer.firstName = firstName;
+    customer.lastName = lastName;
+    customer.phone = customerPhone;
     customer.address = customerAddress;
+    customer.city = customerCity;
+    customer.zip = customerZip;
+    if (customerNotes) customer.comment = customerNotes;
 
     console.log("New Order Received:", {
       customer,
@@ -513,10 +716,10 @@ export function createCheckoutRouter(state: CheckoutState) {
           parseFloat(String(newOrder.discountAmount).replace(/[^\d.]/g, "")) ||
           0;
 
-        // status ('pending') is fixed for a new order. 14 placeholders across the 15 columns.
+        // status ('pending') is fixed for a new order. 15 placeholders across 16 columns.
         const orderInsertSql = `INSERT INTO orders (
-          id, order_nbr, first_name, last_name, phone, address, city, zip, total, subtotal, discount_amount, coupon_applied, status, comment, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?);`;
+          id, order_nbr, first_name, last_name, phone, address, city, zip, total, subtotal, discount_amount, coupon_applied, status, comment, created_at, idempotency_key
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?);`;
         const orderInsertParams = [
           newOrder.id,
           newOrder.orderNbr,
@@ -532,6 +735,7 @@ export function createCheckoutRouter(state: CheckoutState) {
           couponCodeStr,
           newOrder.comment || "",
           orderCreatedDateObj,
+          effectiveKey || null,
         ];
 
         // This result was previously ignored, and the "successfully
@@ -549,6 +753,38 @@ export function createCheckoutRouter(state: CheckoutState) {
             `[Checkout D1 Sync][CRITICAL] Order ${orderNbr} was NOT written to D1: ${state.getLastD1WriteError?.() || "unknown error"}. ` +
               `The customer's checkout succeeded and the order is in local state, but it will NOT appear in the admin orders list until it is re-synced. Reconcile this order manually.`,
           );
+        }
+
+        // Server-authoritative Order Attribution (Phase 11)
+        const rawVisitorId = req.body.visitorId || req.body.visitor_id;
+        const rawSessionId = req.body.sessionId || req.body.session_id;
+        const rawTouchSource = req.body.source || req.body.utmSource || req.body.utm_source || "Direct";
+        const rawCampaign = req.body.utmCampaign || req.body.utm_campaign || null;
+
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const validVisitorId = typeof rawVisitorId === "string" && uuidRegex.test(rawVisitorId.trim()) ? rawVisitorId.trim() : null;
+        const validSessionId = typeof rawSessionId === "string" && uuidRegex.test(rawSessionId.trim()) ? rawSessionId.trim() : null;
+        const validSource = typeof rawTouchSource === "string" ? String(rawTouchSource).substring(0, 50).trim() || "Direct" : "Direct";
+        const validCampaign = typeof rawCampaign === "string" ? String(rawCampaign).substring(0, 100).trim() : null;
+
+        if (validVisitorId || validSessionId) {
+          try {
+            const attrSql = `INSERT INTO analytics_order_attribution (
+              order_nbr, visitor_id, session_id, touch_type, source, utm_campaign, total_mad, created_at
+            ) VALUES (?, ?, ?, 'last', ?, ?, ?, ?);`;
+            const attrParams = [
+              newOrder.orderNbr,
+              validVisitorId,
+              validSessionId,
+              validSource,
+              validCampaign,
+              numericTotal,
+              orderCreatedDateObj,
+            ];
+            await state.executeD1Query(attrSql, attrParams);
+          } catch (attrErr) {
+            console.error("[Order Attribution Sync Error]", attrErr);
+          }
         }
 
         const failedItemInserts: string[] = [];

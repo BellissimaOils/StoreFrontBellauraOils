@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { Product, CartItem, LivePack } from '../types';
 import { useProducts } from './ProductContext';
+import { tracker } from '../lib/tracker';
 
 interface CartContextType {
   cart: CartItem[];
@@ -152,6 +153,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ? `${product.id}__size_${product.selectedSize.size}`
       : product.id;
 
+    const numericPrice = parseFloat(String(product.price || 0).replace(/[^\d.]/g, '')) || 0;
+    tracker.track('add_to_cart', {
+      productId: String(product.id),
+      productName: product.name,
+      quantity: qty,
+      unitPrice: numericPrice,
+    });
+
     setCart(prevCart => {
       const existingItem = prevCart.find(item =>
         (item.cartItemId || (item.selectedSize?.size ? `${item.id}__size_${item.selectedSize.size}` : item.id)) === itemCartKey
@@ -170,6 +179,13 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addLivePackToCart = useCallback((pack: LivePack, qty: number = 1) => {
     const livePackCartId = `live_pack_${pack.id}`;
     const repImage = pack.products?.[0]?.image || "";
+
+    tracker.track('add_to_cart', {
+      productId: livePackCartId,
+      productName: pack.name,
+      quantity: qty,
+      unitPrice: pack.live_price,
+    });
 
     const packItem: CartItem = {
       id: livePackCartId,
@@ -207,6 +223,10 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const removeFromCart = useCallback((itemKey: string) => {
+    tracker.track('remove_from_cart', {
+      productId: String(itemKey),
+      quantity: 1,
+    });
     setCart(prevCart => prevCart.filter(item => {
       const k = item.cartItemId || (item.selectedSize?.size ? `${item.id}__size_${item.selectedSize.size}` : item.id);
       return k !== itemKey && item.id !== itemKey;
@@ -215,6 +235,10 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateQuantity = useCallback((itemKey: string, quantity: number) => {
     if (quantity <= 0) {
+      tracker.track('remove_from_cart', {
+        productId: String(itemKey),
+        quantity: 1,
+      });
       setCart(prevCart => prevCart.filter(item => {
         const k = item.cartItemId || (item.selectedSize?.size ? `${item.id}__size_${item.selectedSize.size}` : item.id);
         return k !== itemKey && item.id !== itemKey;

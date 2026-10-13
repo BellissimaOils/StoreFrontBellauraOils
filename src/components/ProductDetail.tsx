@@ -7,6 +7,7 @@ import { Product, ProductSizeVariant } from '../types';
 import { getOptimizedImageUrl } from '../lib/imageUtils';
 import { usePaginatedReviews } from '../lib/usePaginatedReviews';
 import { trackViewContent, trackAddToCart } from '../lib/pixel';
+import { tracker } from '../lib/tracker';
 import { fetchWithCache, getCachedSync } from '../lib/apiCache';
 import NotFoundPage from './NotFoundPage';
 import { matchesProduct } from '../lib/productMatch';
@@ -351,6 +352,22 @@ export default function ProductDetail() {
   const handleCheckoutNow = () => {
     navigate('/checkout');
   };
+
+  // First-party product_view and third-party Pixel view tracking
+  useEffect(() => {
+    if (!displayProduct?.id) return;
+    const rawNumeric = parseFloat(String(displayProduct.price || 0).replace(/[^\d.]/g, '')) || 0;
+    trackViewContent({
+      content_name: displayProduct.name || '',
+      value: rawNumeric,
+      currency: 'MAD',
+    });
+    tracker.track('product_view', {
+      productId: String(displayProduct.id),
+      productName: displayProduct.name || '',
+      unitPrice: rawNumeric,
+    });
+  }, [displayProduct?.id]);
 
   // Helper to parse review images array
   const parseReviewImages = (imgVal: any): string[] => {

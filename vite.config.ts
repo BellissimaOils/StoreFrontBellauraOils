@@ -3,6 +3,12 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
+  envPrefix: ["VITE_", "CLOUDFLARE_"],
+  define: {
+    "import.meta.env.CLOUDFLARE_TURNSTILE_SITE_KEY": JSON.stringify(
+      process.env.CLOUDFLARE_TURNSTILE_SITE_KEY || ""
+    ),
+  },
   plugins: [react(), tailwindcss()],
   build: {
     outDir: "dist",

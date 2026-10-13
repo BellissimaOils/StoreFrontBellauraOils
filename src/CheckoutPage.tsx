@@ -8,6 +8,7 @@ import { ChevronLeft, ShoppingBag, CheckCircle2, MessageCircle, Loader2, Printer
 import { Link, useNavigate } from 'react-router-dom';
 import { SITE_HOST } from './lib/siteUrl';
 import { trackPurchase } from './lib/pixel';
+import { tracker } from './lib/tracker';
 import { Helmet } from 'react-helmet-async';
 import { BRAND } from './lib/seoContent';
 
@@ -258,9 +259,100 @@ export default function CheckoutPage() {
   });
   const [addressError, setAddressError] = useState<string | null>(null);
 
+  // Cloudflare Turnstile state & verification
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string>(() => {
+    return (
+      (typeof import.meta !== 'undefined' &&
+        (((import.meta.env as any)?.CLOUDFLARE_TURNSTILE_SITE_KEY ||
+          import.meta.env?.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY) as string)) ||
+      ''
+    );
+  });
+
+  useEffect(() => {
+    if (!turnstileSiteKey) {
+      fetch('/api/checkout/turnstile-key')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.siteKey) {
+            setTurnstileSiteKey(data.siteKey);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [turnstileSiteKey]);
+
+  const [turnstileToken, setTurnstileToken] = useState<string>('');
+  const [turnstileError, setTurnstileError] = useState<boolean>(false);
+  const turnstileContainerRef = React.useRef<HTMLDivElement>(null);
+  const turnstileWidgetId = React.useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!turnstileSiteKey) return;
+
+    const renderWidget = () => {
+      if ((window as any).turnstile && turnstileContainerRef.current && !turnstileWidgetId.current) {
+        try {
+          turnstileWidgetId.current = (window as any).turnstile.render(turnstileContainerRef.current, {
+            sitekey: turnstileSiteKey,
+            theme: 'light',
+            callback: (token: string) => {
+              setTurnstileToken(token);
+              setTurnstileError(false);
+            },
+            'expired-callback': () => {
+              setTurnstileToken('');
+            },
+            'error-callback': () => {
+              setTurnstileToken('');
+            },
+          });
+        } catch (e) {
+          console.error('[Turnstile] Render error:', e);
+        }
+      }
+    };
+
+    const scriptId = 'cf-turnstile-script';
+    let script = document.getElementById(scriptId) as HTMLScriptElement;
+    if (!script) {
+      script = document.createElement('script');
+      script.id = scriptId;
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+      script.async = true;
+      script.onload = () => renderWidget();
+      document.head.appendChild(script);
+    } else if ((window as any).turnstile) {
+      renderWidget();
+    }
+
+    return () => {
+      if ((window as any).turnstile && turnstileWidgetId.current) {
+        try {
+          (window as any).turnstile.remove(turnstileWidgetId.current);
+        } catch (e) {}
+        turnstileWidgetId.current = null;
+      }
+    };
+  }, [turnstileSiteKey]);
+
   const [isAdmin, setIsAdmin] = useState(false);
   const [aiText, setAiText] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
+
+  // First-party checkout_start tracking
+  useEffect(() => {
+    if (cart.length > 0) {
+      tracker.track('checkout_start', {
+        quantity: cart.length,
+        unitPrice: checkoutTotalNumeric,
+        metadata: {
+          itemCount: cart.length,
+          totalMad: checkoutTotalNumeric,
+        },
+      });
+    }
+  }, []);
 
   const handleExtractAddress = async () => {
     if (!aiText.trim()) return;
@@ -466,6 +558,12 @@ ${t('cart.total')}: ${total} ${shippingLabel}
     }
     setAddressError(null);
 
+    if (turnstileSiteKey && !turnstileToken) {
+      setTurnstileError(true);
+      return;
+    }
+    setTurnstileError(false);
+
     setIsLoading(true);
     setError(null);
 
@@ -483,6 +581,11 @@ ${t('cart.total')}: ${total} ${shippingLabel}
         },
         body: JSON.stringify({
           idempotencyKey: attemptKeyRef.current,
+          turnstileToken: turnstileToken || undefined,
+          visitorId: localStorage.getItem('bellaura_visitor_id') || undefined,
+          sessionId: localStorage.getItem('bellaura_session_id') || undefined,
+          source: localStorage.getItem('bellaura_session_source') || undefined,
+          utmCampaign: localStorage.getItem('bellaura_utm_campaign') || undefined,
           customer: {
             ...formData,
             address: trimmedAddress,
@@ -523,6 +626,17 @@ ${t('cart.total')}: ${total} ${shippingLabel}
             currency: "MAD",
             content_name: orderNbr || "",
           });
+          // First-party tracker purchase_complete
+          tracker.track('purchase_complete', {
+            productId: orderNbr || '',
+            unitPrice: checkoutTotalNumeric,
+            quantity: cart.length,
+            metadata: {
+              orderNbr,
+              totalMad: checkoutTotalNumeric,
+            },
+          });
+          tracker.flush();
           clearCart();
           setIsLoading(false);
           // Force scroll to top
@@ -1368,6 +1482,18 @@ ${t('cart.total')}: ${total} ${shippingLabel}
                   </p>
                 </div>
               </div>
+
+              {/* Cloudflare Turnstile Verification — Final COD Order Protection */}
+              {turnstileSiteKey && (
+                <div className="mt-6 flex flex-col items-center justify-center min-h-[65px]" id="turnstile-wrapper">
+                  <div ref={turnstileContainerRef} />
+                  {turnstileError && (
+                    <p className="text-[11px] text-red-600 mt-2 font-medium text-center">
+                      {language === 'ar' ? 'يرجى إكمال التحقق الأمني أعلاه لتأكيد طلبك.' : language === 'fr' ? 'Veuillez valider le test de sécurité ci-dessus.' : 'Please complete the security check above.'}
+                    </p>
+                  )}
+                </div>
+              )}
 
               <button 
                 type="submit"

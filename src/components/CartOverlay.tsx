@@ -6,6 +6,7 @@ import { getOptimizedImageUrl } from '../lib/imageUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
+import { tracker } from '../lib/tracker';
 
 function CartCouponCountdown({ expiresAt, language, isOpen }: { expiresAt: string, language: string, isOpen: boolean }) {
   const [timeLeft, setTimeLeft] = useState("");
@@ -82,6 +83,17 @@ export default function CartOverlay({ isOpen, onClose }: CartOverlayProps) {
     onClose();
     navigate('/checkout');
   };
+
+  useEffect(() => {
+    if (isOpen) {
+      const rawSubtotal = parseFloat(String(totalPrice || 0).replace(/[^\d.]/g, '')) || 0;
+      tracker.track('cart_view', {
+        unitPrice: rawSubtotal,
+        quantity: totalItems,
+        metadata: { itemCount: cart.length },
+      });
+    }
+  }, [isOpen]);
 
   const handleApplyCoupon = async (e: React.FormEvent) => {
     e.preventDefault();

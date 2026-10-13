@@ -87,6 +87,7 @@ import { createCouponRouter } from "./src/server/routes/couponRoutes";
 import { createFaqRouter } from "./src/server/routes/faqRoutes";
 import { createCheckoutRouter } from "./src/server/routes/checkoutRoutes";
 import { createLivePackRouter } from "./src/server/routes/livePackRoutes";
+import { createAnalyticsRouter } from "./src/server/routes/analyticsRoutes";
 import { resolvePageSeo } from "./src/lib/seoContent";
 import { SITE_ORIGIN, absoluteUrl } from "./src/lib/siteUrl";
 import {
@@ -359,8 +360,9 @@ const app: Promise<express.Express> = (async () => {
   server.use("/api/", apiLimiter);
 
   server.use(compression());
-  // Scoped limit: allow up to 10mb for reviews to accommodate up to 5 compressed customer photos; 1mb for all other endpoints
+  // Scoped limits: 10mb for review photos, 64kb for checkout payloads, 1mb default
   server.use("/api/reviews", express.json({ limit: "10mb" }));
+  server.use("/api/checkout", express.json({ limit: "64kb" }));
   server.use(express.json({ limit: "1mb" }));
   server.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
@@ -401,6 +403,9 @@ const app: Promise<express.Express> = (async () => {
 
   // Live Packs — GET /live-packs
   server.use("/api", createLivePackRouter(state as any));
+
+  // Analytics — POST /analytics/collect (lightweight first-party tracking intake)
+  server.use("/api", createAnalyticsRouter(state as any));
 
   // ── SEO: sitemap.xml, robots.txt, and pre-rendered HTML ─────────────
   server.use("/", createSeoRouter({
