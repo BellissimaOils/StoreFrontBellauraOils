@@ -8,6 +8,8 @@ import { Helmet } from "react-helmet-async";
 import { motion } from "motion/react";
 import { Link } from "react-router-dom";
 import { useLanguage } from "../context/LanguageContext";
+import { useProducts } from "../context/ProductContext";
+import { isCollectionProduct } from "../lib/collectionProducts";
 import { getOptimizedImageUrl } from "../lib/imageUtils";
 import { fetchWithCache, getCachedSync } from "../lib/apiCache";
 import { resolvePageSeo } from "../lib/seoContent";
@@ -42,7 +44,7 @@ const DEFAULT_HERO = {
   order_index: 0,
 };
 
-const ProgressiveImage = ({ src, alt, className, imgClassName, wrapClassName, loading, fetchPriority, decoding }: any) => {
+const ProgressiveImage = ({ src, alt, className, imgClassName, wrapClassName, loading, fetchPriority, decoding, onReady }: any) => {
   const isEager = loading === "eager" || fetchPriority === "high";
   const [isLoaded, setIsLoaded] = React.useState(isEager);
   // A failed image must be removed, not revealed. onError used to call
@@ -56,8 +58,9 @@ const ProgressiveImage = ({ src, alt, className, imgClassName, wrapClassName, lo
     setHasError(false);
     if (imgRef.current?.complete) {
       setIsLoaded(true);
+      onReady?.();
     }
-  }, [src]);
+  }, [src, onReady]);
 
   // wrapClassName targets the wrapper div (used for transform:scale zoom so
   // it stays off the <img> element and doesn't interfere with object-position).
@@ -86,8 +89,8 @@ const ProgressiveImage = ({ src, alt, className, imgClassName, wrapClassName, lo
           loading={loading}
           fetchPriority={fetchPriority}
           decoding={decoding}
-          onLoad={() => setIsLoaded(true)}
-          onError={() => setHasError(true)}
+          onLoad={() => { setIsLoaded(true); onReady?.(); }}
+          onError={() => { setHasError(true); onReady?.(); }}
         />
       )}
     </div>
@@ -95,6 +98,10 @@ const ProgressiveImage = ({ src, alt, className, imgClassName, wrapClassName, lo
 };
 
 function HomePage() {
+  const { products, fetchProducts } = useProducts();
+  const [primaryReady, setPrimaryReady] = React.useState(false);
+  const markPrimaryReady = React.useCallback(() => setPrimaryReady(true), []);
+  const warmedImages = React.useRef(new Map<string, HTMLImageElement>());
   const { t, language } = useLanguage();
   const isAr = language === "ar";
   const isFr = language === "fr";
@@ -148,6 +155,32 @@ function HomePage() {
         setHasFetched(true);
       });
   }, []);
+
+  const hasCollection = sections.some(s => s.type === 'collection');
+  const canWarmCollection = primaryReady || (hasFetched && sections.length > 0 &&
+    !sections.some(s => (s.type === 'hero' || s.type === 'paragraph') && s.image_url));
+
+  // Once the primary image finishes, prepare only the first carousel viewport.
+  // This removes the API -> chunk -> image waterfall even before scrolling.
+  React.useEffect(() => {
+    if (!hasCollection || !canWarmCollection) return;
+    fetchProducts();
+    void import('./CollectionSwiper').catch(() => {});
+  }, [hasCollection, canWarmCollection, fetchProducts]);
+
+  React.useEffect(() => {
+    if (!hasCollection || !canWarmCollection) return;
+    products.filter(isCollectionProduct).slice(0, 4).forEach(product => {
+      const src = getOptimizedImageUrl(product.image, 'eco', 500);
+      if (!src || warmedImages.current.has(src)) return;
+      const image = new Image();
+      image.referrerPolicy = 'no-referrer';
+      image.decoding = 'async';
+      image.fetchPriority = 'auto';
+      warmedImages.current.set(src, image);
+      image.src = src;
+    });
+  }, [products, hasCollection, canWarmCollection]);
 
   const renderSection = (s: any, idx: number) => {
     const isEn = language === "en";
@@ -299,6 +332,7 @@ function HomePage() {
               loading={isFirstImage ? "eager" : "lazy"}
               fetchPriority={isFirstImage ? "high" : "low"}
               decoding={isFirstImage ? "sync" : "async"}
+                    onReady={isFirstImage ? markPrimaryReady : undefined}
             />
           </div>
 
@@ -538,6 +572,7 @@ function HomePage() {
                     loading={isFirstImage ? "eager" : "lazy"}
                     fetchPriority={isFirstImage ? "high" : "low"}
                     decoding={isFirstImage ? "sync" : "async"}
+                    onReady={isFirstImage ? markPrimaryReady : undefined}
                   />
                   <div className="absolute inset-0 bg-primary-earth/10 group-hover:bg-transparent transition-colors duration-700 pointer-events-none" />
                   <div className="hidden lg:block absolute -top-3 -left-3 w-12 h-12 border-t border-l border-accent-gold/40 pointer-events-none" />
@@ -713,7 +748,9 @@ function HomePage() {
       ) : sections.length > 0 ? (
         <div className="space-y-0">
           {sections.map((s, idx) => (
-            <DeferredSection key={s.id || idx} eager={idx < 2}>
+            <DeferredSection key={s.id || idx} eager={idx < 2}
+              preloadDistance={s.type === 'collection' ? 1200 : 300}
+              onApproach={s.type === 'collection' ? fetchProducts : undefined}>
               {() => <React.Suspense fallback={<div className="min-h-[300px] bg-background-soft animate-pulse" />}>
                 {renderSection(s, idx)}
               </React.Suspense>}

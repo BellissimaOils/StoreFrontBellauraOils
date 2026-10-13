@@ -6,6 +6,7 @@ import { motion } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 import { ChevronLeft, ChevronRight, ShoppingBag, Star, Sparkles, Leaf } from 'lucide-react';
 import { getOptimizedImageUrl } from '../lib/imageUtils';
+import { isCollectionProduct } from '../lib/collectionProducts';
 
 interface CollectionSwiperProps {
   title?: string;
@@ -51,19 +52,7 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
   const [addedId, setAddedId] = useState<string | null>(null);
   const isAr = language === 'ar';
 
-  const displayProducts = useMemo(() => products.filter(p => {
-    if (!p) return false;
-    const isAvailable = p.isAvailable !== false && p.isAvailable !== 0 && String(p.isAvailable) !== "0" && String(p.isAvailable) !== "false";
-    const inCatalog = (p as any).in_catalog !== 0 && (p as any).in_catalog !== "0" && (p as any).in_catalog !== false && String((p as any).in_catalog) !== "false";
-
-    const swiperVal = p.showInSwiper !== undefined ? p.showInSwiper : (p as any).show_in_swiper;
-    const isSwiperVisible = swiperVal !== false && swiperVal !== 0 && String(swiperVal) !== "0" && String(swiperVal) !== "false" && String(swiperVal) !== "null" && String(swiperVal) !== "undefined";
-
-    const displaySec = String(p.displaySection || (p as any).display_section || "both").toLowerCase();
-    const matchesSection = displaySec !== "products" && displaySec !== "packs" && displaySec !== "none";
-
-    return isAvailable && inCatalog && isSwiperVisible && matchesSection;
-  }), [products]);
+  const displayProducts = useMemo(() => products.filter(isCollectionProduct), [products]);
 
   const checkScroll = () => {
     if (!scrollRef.current) return;
@@ -302,10 +291,7 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
             return (
               <motion.div
                 key={pack.id}
-                initial={{ opacity: 0, y: 24, scale: 0.96, filter: 'blur(4px)' }}
-                whileInView={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
-                transition={{ delay: Math.min(index, 6) * 0.07, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-                viewport={{ once: true, margin: '0px 0px -60px 0px' }}
+                initial={false}
                 className="flex-shrink-0 w-[72vw] sm:w-[280px] snap-center group"
               >
                 {/*
@@ -334,8 +320,8 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
                       <img
                         src={getOptimizedImageUrl(pack.image, 'eco', 500) || undefined}
                         alt={pack.name}
-                        loading={index < 3 ? "eager" : "lazy"}
-                        fetchPriority="low"
+                        loading={index < 4 ? "eager" : "lazy"}
+                        fetchPriority={index < 4 ? "auto" : "low"}
                         decoding="async"
                         draggable={false}
                         className="w-full h-full object-contain p-4 transition-transform duration-700 ease-out group-hover:scale-[1.08]"

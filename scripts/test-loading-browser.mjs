@@ -12,7 +12,7 @@ const server = app.listen(0, '127.0.0.1');
 await new Promise(resolve => server.once('listening', resolve));
 const base = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : {}) });
-const product = id => ({ id, slug: id, name: `${id} Oil`, name_en: `${id} Oil`, price: '90 DH', image: '/fixture.svg', category: 'skin', isAvailable: true, showInSwiper: true, displaySection: 'both', in_catalog: 1, sizes: [{size:'30 ml',price:'90 DH',originalPrice:'120 DH'}] });
+const product = id => ({ id, slug: id, name: `${id} Oil`, name_en: `${id} Oil`, price: '90 DH', image: `/${id}.svg`, category: 'skin', isAvailable: true, showInSwiper: true, displaySection: 'both', in_catalog: 1, sizes: [{size:'30 ml',price:'90 DH',originalPrice:'120 DH'}] });
 const sections = [
   { id: 'hero', type: 'hero', image_url: '/fixture.svg', image_fit: 'cover', image_config: JSON.stringify({h_mobile:90,h_desktop:90}), title_en: 'Home hero' },
   { id: 'intro', type: 'paragraph', image_url: '/intro.svg', title_en: 'Our oils', content_en: 'Priority section', image_fit:'cover' },
@@ -21,9 +21,12 @@ const sections = [
   { id: 'live', type: 'live', title_en: 'Live' },
 ].map((s,i)=>({...s,is_visible:1,order_index:i}));
 const results=[];
-async function setup(viewport) {
+async function setup(viewport, holdHero = false) {
+  let releaseHero;
+  const heroReady = new Promise(resolve => { releaseHero = resolve; });
+  if (!holdHero) releaseHero();
   const context = await browser.newContext({viewport});
-  const requests=[]; const errors=[];
+  const requests=[]; const errors=[]; const collectionLoads=[];
   const page=await context.newPage();
   page.on('pageerror', error=>errors.push(error.message));
   page.on('request', req=>requests.push(new URL(req.url()).pathname));
@@ -31,11 +34,23 @@ async function setup(viewport) {
     const url=new URL(route.request().url());
     if(url.origin!==base) return route.abort();
     const pathname=url.pathname;
+    if(pathname==='/fixture.svg') await heroReady;
     const json=body=>route.fulfill({json:body});
     if(pathname==='/api/homepage-sections') return json({success:true,sections});
     if(pathname==='/api/store-settings') return json({success:true,storeSettings:{enableEn:true,enableAr:true}});
     if(pathname==='/api/sections') return json({success:true,sections:[{id:'nav',type:'link',is_visible:1,order_index:0,title_en:'Products',link_url:'/products'}]});
-    if(pathname==='/api/products') return json({success:true,products:[product('argan'),product('jojoba')],storeSettings:{enableEn:true,enableAr:true}});
+    if(pathname.includes('/assets/CollectionSwiper-')) {
+      await new Promise(resolve=>setTimeout(resolve,500));
+      return route.continue();
+    }
+    if(pathname==='/api/products') {
+      const collection=page.locator('[data-preload-distance="1200"]');
+      if(await collection.count()) collectionLoads.push(await collection.evaluate(el=>({
+        distance:el.getBoundingClientRect().top-window.innerHeight,
+        hasCards:!!el.querySelector('img'),
+      })));
+      return json({success:true,products:['argan','jojoba','rose','almond','coconut','olive'].map(product),storeSettings:{enableEn:true,enableAr:true}});
+    }
     if(pathname.endsWith('/data')) return json({success:true,data:{}});
     if(pathname.startsWith('/api/products/')) {
       const id=pathname.split('/').pop();
@@ -51,15 +66,15 @@ async function setup(viewport) {
     return route.continue();
   });
   await page.addInitScript(()=>localStorage.setItem('bellaura_lang','en'));
-  return {context,page,requests,errors};
+  return {context,page,requests,errors,collectionLoads,releaseHero};
 }
 async function navigate(page, pathname) {
   await page.evaluate(pathname=>{history.pushState({},'',pathname);dispatchEvent(new PopStateEvent('popstate'));},pathname);
 }
 try {
   for(const viewport of [{width:390,height:844},{width:1440,height:900}]) {
-    const {context,page,requests,errors}=await setup(viewport);
-    await page.goto(base+'/');
+    const {context,page,requests,errors,collectionLoads,releaseHero}=await setup(viewport,true);
+    await page.goto(base+'/',{waitUntil:'domcontentloaded'});
     await page.locator('[data-deferred-section="ready"]').first().waitFor();
     await page.waitForTimeout(800);
     assert.ok(!requests.includes('/api/products'),'home downloaded catalog before collection');
@@ -68,14 +83,27 @@ try {
     assert.ok(!requests.some(url=>url.includes('/assets/ProductDetail-')));
     assert.ok(await page.locator('[data-deferred-section="waiting"]').count()>0);
     assert.equal(await page.locator('img[fetchpriority="high"]').first().getAttribute('src'),'/fixture.svg');
+    const imagesWarmed = Promise.all(['argan','jojoba','rose','almond'].map(id=>
+      page.waitForRequest(request=>new URL(request.url()).pathname===`/${id}.svg`)));
+    releaseHero();
+    await imagesWarmed;
+    assert.equal(await page.evaluate(()=>window.scrollY),0);
+    assert.equal(await page.locator('[data-preload-distance="1200"]').getAttribute('data-deferred-section'),'waiting');
+    assert.ok(!requests.includes('/coconut.svg'),'distant carousel images must remain lazy');
     for(let i=0;i<16 && !requests.includes('/api/live-packs');i++) {
       await page.evaluate(()=>window.scrollBy(0,600));
       await page.waitForTimeout(150);
     }
     assert.ok(requests.includes('/api/products'),'collection did not request catalog on approach');
     assert.ok(requests.includes('/api/live-packs'),'live section did not request packs on approach');
+    assert.ok(collectionLoads[0].distance > 300, 'collection must start earlier than the old 300px threshold');
+    assert.equal(collectionLoads[0].hasCards,false,'data request starts without waiting for the delayed collection chunk');
+    const collection=page.locator('[data-preload-distance="1200"]');
+    assert.equal(await collection.locator('img[loading="eager"][fetchpriority="auto"]').count(),4);
+    assert.equal(await collection.locator('img[loading="lazy"][fetchpriority="low"]').count(),2);
+    assert.equal(await collection.locator('img').first().evaluate(el=>getComputedStyle(el.closest('.snap-center')).opacity),'1');
     assert.deepEqual(errors,[]);
-    results.push(`PASS home ${viewport.width}px: priority hero, deferred catalog/reviews/live/code, scrolling activates sections`);
+    results.push(`PASS home ${viewport.width}px: hero first; first 4 product images requested before scrolling; early collection activation; remaining images and live section stay lazy; no hidden card animation`);
     await context.close();
   }
   const {context,page,requests,errors}=await setup({width:390,height:844});
