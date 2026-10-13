@@ -730,7 +730,7 @@ export async function ensureProductsDataTablesExist(): Promise<boolean> {
 // fallbackSections) if D1 isn't configured or the request fails — same
 // behavior as the original inline function, which fell back to the
 // module-level `siteSections` variable directly.
-export async function fetchSectionsForSitemap(fallbackSections: any[]): Promise<any[]> {
+export async function fetchSectionsForSitemap(fallbackSections: any[], includeNonIndexable = false): Promise<any[]> {
   try {
     const rawAccountId = process.env.CLOUDFLARE_D1_ACCOUNT_ID;
     const rawDatabaseId = process.env.CLOUDFLARE_D1_DATABASE_ID;
@@ -741,7 +741,7 @@ export async function fetchSectionsForSitemap(fallbackSections: any[]): Promise<
 
     if (accountId && databaseId && apiToken) {
       const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
-      const sql = `SELECT * FROM sections_management WHERE is_visible = 1 AND (exclude_from_sitemap IS NULL OR exclude_from_sitemap = 0) ORDER BY order_index ASC;`;
+      const sql = `SELECT * FROM sections_management WHERE is_visible = 1 ${includeNonIndexable ? "" : "AND (exclude_from_sitemap IS NULL OR exclude_from_sitemap = 0)"} ORDER BY order_index ASC;`;
       const resp = await fetch(cloudflareUrl, {
         method: "POST",
         headers: {

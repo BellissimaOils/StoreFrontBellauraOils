@@ -8,7 +8,7 @@ import { useIncrementalList } from '../lib/useIncrementalList';
 
 export default function FeaturedProducts() {
   const { t, language } = useLanguage();
-  const { products, loading, storeSettings } = useProducts();
+  const { products, loading, storeSettings } = useProducts(true);
   const viewMode = storeSettings?.featuredProductsLayout || 'grid';
   
   const gridClass = viewMode === "grid"

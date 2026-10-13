@@ -13,7 +13,7 @@ type Review = ReviewItem;
 
 export default function ReviewsPage() {
   const { language, t } = useLanguage();
-  const { products } = useProducts();
+  const { products } = useProducts(true);
   // 20 at a time instead of every review in the shop on first paint.
   const { reviews, total, hasMore, isLoading, isLoadingMore, loadMore } = usePaginatedReviews();
   const [selectedReviewImage, setSelectedReviewImage] = useState<Review | null>(null);

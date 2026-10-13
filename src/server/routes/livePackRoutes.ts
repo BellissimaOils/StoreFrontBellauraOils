@@ -5,6 +5,9 @@ interface LivePackState {
   getStoreSettings: () => any;
   refreshStoreSettings?: (force?: boolean) => Promise<void>;
   getProducts: () => any[];
+  fetchProductsFromD1: () => Promise<any[] | null>;
+  setD1Products: (products: any[]) => void;
+  syncD1ToClassicProducts: () => void;
 }
 
 export function createLivePackRouter(state: LivePackState) {
@@ -39,6 +42,10 @@ export function createLivePackRouter(state: LivePackState) {
 
       // 2. Fetch visible packs from D1
       const rawPacks = await fetchVisibleLivePacksFromD1();
+      if (!state.getProducts()?.length) {
+        const rows = await state.fetchProductsFromD1();
+        if (rows) { state.setD1Products(rows); state.syncD1ToClassicProducts(); }
+      }
       const catalog = state.getProducts() || [];
 
       // 3. Resolve existing products inside each pack

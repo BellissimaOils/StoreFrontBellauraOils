@@ -3,12 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useProducts } from '../context/ProductContext';
-import { getProductSlug } from '../types';
+import { Product, ProductSizeVariant } from '../types';
 import { getOptimizedImageUrl } from '../lib/imageUtils';
 import { usePaginatedReviews } from '../lib/usePaginatedReviews';
 import { trackViewContent, trackAddToCart } from '../lib/pixel';
 import { fetchWithCache, getCachedSync } from '../lib/apiCache';
 import NotFoundPage from './NotFoundPage';
+import { matchesProduct } from '../lib/productMatch';
 
 import { ChevronLeft, ShoppingBag, Leaf, ShieldCheck, Heart, CreditCard, ZoomIn, ZoomOut, X, Maximize2, Info, Droplets, Minus, Plus, ChevronDown, ChevronUp, Truck, ShieldAlert, Check, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -32,7 +33,7 @@ export default function ProductDetail() {
   const { addToCart, cart } = useCart();
   const { t, language } = useLanguage();
   const navigate = useNavigate();
-  const { products, storeSettings, loading } = useProducts();
+  const { products, storeSettings, loading, productError } = useProducts();
   const isAr = language === 'ar';
   
   const [isHovered, setIsHovered] = useState(false);
@@ -58,29 +59,14 @@ export default function ProductDetail() {
 
   const buyButtonRef = useRef<HTMLDivElement>(null);
 
-  const decodedId = id ? decodeURIComponent(id).trim().toLowerCase() : '';
-  const initialProduct = typeof window !== 'undefined' ? (window as any).__INITIAL_PRODUCT__ : null;
-  const isInitialNotFound = typeof window !== 'undefined' && !!(window as any).__INITIAL_NOT_FOUND__;
-  const product =
-    products.find((p) => {
-      if (!p) return false;
-      if (String(p.id) === id || String(p.id).toLowerCase() === decodedId) return true;
-      if (p.slug && String(p.slug).toLowerCase() === decodedId) return true;
-      const slug = getProductSlug(p.name);
-      const slugEn = p.name_en ? getProductSlug(p.name_en) : '';
-      const slugAr = (p as any).name_ar ? getProductSlug((p as any).name_ar) : '';
-      return (
-        slug.toLowerCase() === decodedId ||
-        slug === id ||
-        (slugEn && (slugEn.toLowerCase() === decodedId || slugEn === id)) ||
-        (slugAr && (slugAr.toLowerCase() === decodedId || slugAr === id))
-      );
-    }) || initialProduct;
+  const decodedId = (id || '').trim().toLowerCase();
+  const product = products.find(p => matchesProduct(p, id || ''));
 
   useEffect(() => {
-    if (isInitialNotFound) return;
     const targetId = product?.id || id;
-    if (targetId) {
+    if (product?.id && targetId) {
+      let active = true;
+      setExtendedData({});
       const cacheKey = `/api/products/${targetId}/data`;
       const cached = getCachedSync<any>(cacheKey);
       if (cached?.success && cached.data) {
@@ -89,11 +75,12 @@ export default function ProductDetail() {
 
       fetchWithCache(cacheKey)
         .then((d) => {
-          if (d && d.success && d.data) {
+          if (active && d && d.success && d.data) {
             setExtendedData(d.data);
           }
         })
         .catch(console.error);
+      return () => { active = false; };
     }
   }, [id, product?.id]);
 
@@ -276,14 +263,8 @@ export default function ProductDetail() {
     return <NotFoundPage variant="product" />;
   }
 
-  if (isInitialNotFound) {
-    return <NotFoundPage variant="product" />;
-  }
-
-  // Show spinner only while the catalog hasn't arrived yet.
-  // If the catalog IS loaded (products.length > 0) but the product isn't in it,
-  // skip the spinner and fall through to the 404 below immediately.
-  if (loading && !product && products.length === 0) {
+  // Each target product can still be loading even when another is cached.
+  if (loading && !product) {
     return (
       <div className="pt-40 lg:pt-48 pb-24 bg-[#FAF9F6] min-h-screen flex flex-col items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -305,6 +286,14 @@ export default function ProductDetail() {
   // heading (a copy-paste slip - it literally said "Related Products" as the
   // error message) and was visible for a single frame before an effect
   // navigate('/', {replace:true})'d away.
+  if (!product && productError) {
+    return <div className="pt-48 pb-24 text-center" role="alert">
+      <p>{language === 'ar' ? 'تعذر تحميل المنتوج. حاول مرة أخرى.' : language === 'fr' ? 'Impossible de charger le produit. Réessayez.' : 'Unable to load the product. Please try again.'}</p>
+      <button className="mt-4 underline" onClick={() => window.location.reload()}>
+        {language === 'ar' ? 'إعادة المحاولة' : language === 'fr' ? 'Réessayer' : 'Retry'}
+      </button>
+    </div>;
+  }
   if (!product) {
     return <NotFoundPage variant="product" />;
   }
@@ -479,7 +468,7 @@ export default function ProductDetail() {
   };
 
   // Safe price calculations
-  const getCleanPrice = (priceStr: string) => {
+  function getCleanPrice(priceStr: string) {
     if (!priceStr) return 0;
     const clean = priceStr.replace(/[^\d.]/g, '');
     const num = parseFloat(clean);

@@ -69,7 +69,7 @@ export default function CartOverlay({ isOpen, onClose }: CartOverlayProps) {
     finalPrice,
     addToCart
   } = useCart();
-  const { products, storeSettings } = useProducts();
+  const { products, storeSettings } = useProducts(isOpen);
   const { language, t } = useLanguage();
   const navigate = useNavigate();
 

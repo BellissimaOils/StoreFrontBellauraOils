@@ -144,7 +144,7 @@ function CheckoutCouponCountdown({ expiresAt, language }: { expiresAt: string, l
 }
 
 export default function CheckoutPage() {
-  const { storeSettings } = useProducts();
+  const { storeSettings } = useProducts(true);
   const navigate = useNavigate();
   const { 
     cart, 

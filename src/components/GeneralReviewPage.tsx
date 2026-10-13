@@ -24,7 +24,7 @@ import { buildReviewTargets, type ReviewTarget } from '../lib/reviewTargets';
 export default function GeneralReviewPage() {
   const navigate = useNavigate();
   const { language } = useLanguage();
-  const { products, storeSettings, loading: productsLoading } = useProducts();
+  const { products, storeSettings, loading: productsLoading } = useProducts(true);
   const isAr = language === 'ar';
   const isRtl = isAr;
   const isFr = language === 'fr';

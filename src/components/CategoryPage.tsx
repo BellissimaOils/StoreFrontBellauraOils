@@ -131,7 +131,7 @@ export default function CategoryPage() {
   const cleanId = rawId.toLowerCase().trim().replace(/\/+$/, "");
 
   const { t, language } = useLanguage();
-  const { products: allProducts, loading, storeSettings } = useProducts();
+  const { products: allProducts, loading, storeSettings } = useProducts(true);
   const cachedSections = getCachedSync<any>("/api/sections");
   const [sections, setSections] = useState<any[]>(
     cachedSections?.success ? cachedSections.sections : [],

@@ -42,7 +42,7 @@ interface CollectionSwiperProps {
  */
 export default function CollectionSwiper({ title, subtitle, content }: CollectionSwiperProps) {
   const { t, language } = useLanguage();
-  const { products, loading, storeSettings } = useProducts();
+  const { products, loading, storeSettings } = useProducts(true);
   const { addToCart } = useCart();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
@@ -335,7 +335,7 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
                         src={getOptimizedImageUrl(pack.image, 'eco', 500) || undefined}
                         alt={pack.name}
                         loading={index < 3 ? "eager" : "lazy"}
-                        fetchPriority={index < 3 ? "high" : "low"}
+                        fetchPriority="low"
                         decoding="async"
                         draggable={false}
                         className="w-full h-full object-contain p-4 transition-transform duration-700 ease-out group-hover:scale-[1.08]"

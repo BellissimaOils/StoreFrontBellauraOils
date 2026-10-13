@@ -11,6 +11,16 @@ interface CacheEntry<T> {
 const cache = new Map<string, CacheEntry<any>>();
 const pendingRequests = new Map<string, Promise<any>>();
 
+// The direct product HTML can carry the requested product. Seed the same
+// endpoint cache so startup prefetch and the provider do not download it again.
+if (typeof window !== "undefined" && (window as any).__INITIAL_PRODUCT__) {
+  const id = window.location.pathname.split("/")[2];
+  if (id) cache.set(`/api/products/${id}`, {
+    data: { success: true, product: (window as any).__INITIAL_PRODUCT__ }, timestamp: Date.now(),
+  });
+}
+
+
 // Short 3s TTL to deduplicate concurrent component mounts without holding stale data
 const DEFAULT_TTL = 3000;
 
@@ -73,31 +83,17 @@ export function prefetchAppInitialData() {
   if (typeof window === "undefined") return;
   const path = window.location.pathname;
 
+  const warm = (url: string) => { void fetchWithCache(url).catch(() => {}); };
   if (path.startsWith("/product/")) {
-    const parts = path.split("/").filter(Boolean);
-    const productId = parts[1];
-    if (productId) {
-      fetchWithCache(`/api/products/${productId}/data`);
-    }
-    fetchWithCache("/api/reviews/summary");
-    fetchWithCache("/api/sections");
-
-    if (typeof window.requestIdleCallback === "function") {
-      window.requestIdleCallback(() => fetchWithCache("/api/products"), { timeout: 2500 });
-    } else {
-      setTimeout(() => fetchWithCache("/api/products"), 1500);
-    }
-  } else {
-    fetchWithCache("/api/products");
-    fetchWithCache("/api/sections");
-
-    if (path === "/" || path === "") {
-      fetchWithCache("/api/homepage-sections");
-      fetchWithCache("/api/reviews/summary");
-    } else if (path === "/faq") {
-      fetchWithCache("/api/faq");
-    }
+    const id = path.split("/").filter(Boolean)[1];
+    if (id) warm(`/api/products/${id}`);
+  } else if (path === "/" || path === "") {
+    warm("/api/homepage-sections");
+  } else if (path === "/faq") {
+    warm("/api/faq");
   }
+  warm("/api/sections");
+  warm("/api/store-settings");
 }
 
 export function clearCache(url?: string) {

@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useLanguage } from "../context/LanguageContext";
 import { useCart } from "../context/CartContext";
 import { useProducts } from "../context/ProductContext";
-import { Product, getProductSlug, parseBenefitsList } from "../types";
+import { Product, ProductSizeVariant, getProductSlug, parseBenefitsList } from "../types";
 import { getOptimizedImageUrl } from "../lib/imageUtils";
 import {
   Sparkles,

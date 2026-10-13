@@ -25,9 +25,10 @@ import { parseQuoteConfig } from "../lib/quoteConfig";
 import { parseParagraphConfig } from "../lib/paragraphConfig";
 import { SITE_ORIGIN, absoluteUrl } from "../lib/siteUrl";
 
-import CollectionSwiper from "./CollectionSwiper";
-import LivePacksSection from "./LivePacksSection";
-import { LivePack } from "../types";
+import { lazyRetry } from "../lib/lazyRetry";
+import DeferredSection from "./DeferredSection";
+const CollectionSwiper = lazyRetry(() => import("./CollectionSwiper"));
+const HomeLivePacks = lazyRetry(() => import("./HomeLivePacks"));
 
 const DEFAULT_HOME_HERO_IMAGE = "https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/home.jpg";
 
@@ -146,20 +147,6 @@ function HomePage() {
         if (sections.length === 0) setSections([DEFAULT_HERO]);
         setHasFetched(true);
       });
-  }, []);
-
-  const [livePacks, setLivePacks] = React.useState<LivePack[]>([]);
-
-  React.useEffect(() => {
-    fetchWithCache("/api/live-packs")
-      .then((data) => {
-        if (data && data.success && data.enabled && Array.isArray(data.packs)) {
-          setLivePacks(data.packs);
-        } else {
-          setLivePacks([]);
-        }
-      })
-      .catch(() => setLivePacks([]));
   }, []);
 
   const renderSection = (s: any, idx: number) => {
@@ -448,8 +435,7 @@ function HomePage() {
     ) {
       return (
         <div key={s.id || idx} id="live">
-          <LivePacksSection
-            packs={livePacks}
+          <HomeLivePacks
             title={title}
             subtitle={subtitle}
             textColor={s.text_color}
@@ -726,7 +712,13 @@ function HomePage() {
         </div>
       ) : sections.length > 0 ? (
         <div className="space-y-0">
-          {sections.map((s, idx) => renderSection(s, idx))}
+          {sections.map((s, idx) => (
+            <DeferredSection key={s.id || idx} eager={idx < 2}>
+              {() => <React.Suspense fallback={<div className="min-h-[300px] bg-background-soft animate-pulse" />}>
+                {renderSection(s, idx)}
+              </React.Suspense>}
+            </DeferredSection>
+          ))}
         </div>
       ) : hasFetched ? (
         <div className="py-24 text-center text-primary-earth/50">

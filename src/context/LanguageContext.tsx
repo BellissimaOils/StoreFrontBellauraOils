@@ -22,9 +22,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
-    // Re-use the already-inflight /api/products request from ProductContext
-    // (fetchWithCache deduplicates so this adds zero extra network requests)
-    fetchWithCache('/api/products')
+    // Language settings must not require downloading the catalog.
+    fetchWithCache('/api/store-settings')
       .then(data => {
         if (!isMounted || !data?.storeSettings) return;
         const { storeSettings } = data;

@@ -1,3 +1,4 @@
+import { matchesProduct } from "./src/lib/productMatch";
 // server.ts — Bellaura Oils PUBLIC STOREFRONT
 //
 // This server exposes ONLY public-facing routes.
@@ -365,54 +366,13 @@ const app: Promise<express.Express> = (async () => {
 
   const state = buildState();
 
-  // ── Cold-start: load data from D1 ──────────────────────────────────
-  try {
-    await refreshStoreSettingsFromD1(true);
-    const d1Prods = await fetchRealD1ProductsIfConfigured();
-    if (d1Prods) { d1_products = d1Prods; syncD1ToClassicProducts(); }
-    const d1Countries = await fetchRealD1CountriesIfConfigured();
-    if (d1Countries) countries = d1Countries;
-    const d1Coupons = await fetchRealD1CouponsIfConfigured();
-    if (d1Coupons) coupons = d1Coupons;
-    const d1Cities = await fetchRealD1CitiesIfConfigured();
-    if (d1Cities) d1_cities = d1Cities;
-
-    const accountId = sanitizeCredentials(process.env.CLOUDFLARE_D1_ACCOUNT_ID);
-    const databaseId = sanitizeCredentials(process.env.CLOUDFLARE_D1_DATABASE_ID);
-    const apiToken = sanitizeCredentials(process.env.CLOUDFLARE_D1_API_TOKEN);
-    if (accountId && databaseId && apiToken) {
-      const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
-      const [secRes, hpRes] = await Promise.allSettled([
-        fetch(cloudflareUrl, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ sql: "SELECT * FROM sections_management ORDER BY order_index ASC;" }),
-        }).then((r) => r.json()),
-        fetch(cloudflareUrl, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ sql: "SELECT * FROM homepage_sections ORDER BY order_index ASC;" }),
-        }).then((r) => r.json()),
-      ]);
-      if (secRes.status === "fulfilled" && secRes.value?.success) {
-        let rows = secRes.value.result?.[0]?.results || secRes.value.result?.results || [];
-        if (!Array.isArray(rows) && Array.isArray(secRes.value.result)) rows = secRes.value.result;
-        siteSections = rows;
-      }
-      if (hpRes.status === "fulfilled" && hpRes.value?.success) {
-        let rows = hpRes.value.result?.[0]?.results || hpRes.value.result?.results || [];
-        if (!Array.isArray(rows) && Array.isArray(hpRes.value.result)) rows = hpRes.value.result;
-        homepageSections = rows;
-      }
-      lastDbLoadTime = Date.now();
-    }
-  } catch (e) {
-    console.warn("[Storefront] D1 cold-start init failed:", e);
-  }
-
-  try { await loadReviewsDb(); } catch (e) {
-    console.warn("[Storefront] Reviews load failed:", e);
-  }
+  // Only review requests hydrate the reviews store. The HTML shell, home,
+  // product, settings and checkout APIs must not wait for the R2 download.
+  let reviewsReady: Promise<void> | undefined;
+  server.use(["/api/reviews", "/api/review"], (_req, _res, next) => {
+    reviewsReady ??= loadReviewsDb();
+    reviewsReady.then(() => next(), next);
+  });
 
   // ── Public API routes ────────────────────────────────────────────────
   // Products — GET /products, /products/:id/data  (admin CRUD stays in dashboard)
@@ -485,23 +445,47 @@ const app: Promise<express.Express> = (async () => {
     }));
 
     // SPA fallback — all unknown paths serve HTML shell
-    server.use("*", (req, res) => {
+    server.use("*", async (req, res, next) => {
+      try {
       const htmlPath = getHtmlShell();
       if (!htmlPath) {
         return res.status(404).send("Not found");
       }
-      const sectionPaths = collectSectionPaths(siteSections, normalizeSectionLinkServer);
-      const productSlugs = collectProductSlugs(products, getProductSlug);
-      const pathKind = resolvePath(req.path, {
-        sectionPaths,
-        productSlugs,
-        dataReady: siteSections.length > 0 || products.length > 0,
-      });
-      if (pathKind === "not-found") {
-        res.status(404);
+      // Express strips the mount path inside use("*"); inspect the original URL.
+      const pathname = req.originalUrl.split("?")[0];
+      let initialProduct: any = null;
+      let productDataReady = false;
+      if (pathname.startsWith("/product/")) {
+        // Resolve only the product data needed for a direct landing. Never load
+        // home sections, cities, coupons or reviews before returning this HTML.
+        const rows = await fetchRealD1ProductsIfConfigured();
+        if (rows !== null) {
+          d1_products = rows;
+          products = rows.map(mapD1RowToProductSchema).filter(p => p && Number(p.in_catalog) !== 0);
+          d1ApiCache.products = { data: products, timestamp: Date.now() };
+          productDataReady = true;
+        }
+        initialProduct = products.find(p => matchesProduct(p, decodeURIComponent(pathname.split("/")[2] || "")));
       }
+      let sectionPaths = collectSectionPaths(siteSections, normalizeSectionLinkServer);
+      let pathKind = resolvePath(pathname, {
+        sectionPaths, productSlugs: collectProductSlugs(products, getProductSlug),
+        dataReady: pathname.startsWith("/product/") ? productDataReady : true,
+      });
+      if (pathKind === "not-found" && /^\/[^/]+\/?$/.test(pathname)) {
+        siteSections = await fetchSectionsForSitemap(siteSections, true);
+        sectionPaths = collectSectionPaths(siteSections, normalizeSectionLinkServer);
+        pathKind = resolvePath(pathname, { sectionPaths, dataReady: true });
+      }
+      if (pathKind === "not-found") res.status(404);
       res.setHeader("Cache-Control", "no-cache, must-revalidate");
-      res.sendFile(htmlPath);
+      let html = await fs.promises.readFile(htmlPath, "utf8");
+      if (initialProduct) {
+        const json = JSON.stringify(initialProduct).replace(/</g, "\\u003c");
+        html = html.replace("</head>", `<script>window.__INITIAL_PRODUCT__=${json};</script></head>`);
+      }
+      res.type("html").send(html);
+      } catch (error) { next(error); }
     });
   } else {
     // Dev: Vite handles the frontend on a separate port

@@ -1,25 +1,22 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Product } from '../types';
 import { fetchWithCache, getCachedSync } from '../lib/apiCache';
+import { matchesProduct } from '../lib/productMatch';
 
 interface ProductContextType {
   products: Product[];
   storeSettings: any;
   loading: boolean;
+  productError: boolean;
   fetchProducts: () => void;
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   setStoreSettings: React.Dispatch<React.SetStateAction<any>>;
 }
-
-const ProductContext = createContext<ProductContextType>({ 
-  products: [],
-  storeSettings: {},
-  loading: true, 
-  fetchProducts: () => {}, 
-  setProducts: () => {},
-  setStoreSettings: () => {} 
+const ProductContext = createContext<ProductContextType>({
+  products: [], storeSettings: {}, loading: true, productError: false,
+  fetchProducts: () => {}, setProducts: () => {}, setStoreSettings: () => {},
 });
-
 /** Ratings keyed by lowercased product reference, as /api/reviews/summary returns them. */
 type RatingSummary = Record<string, { count: number; rating: string }>;
 
@@ -50,148 +47,88 @@ function applyRatingSummary(list: any[], summary: RatingSummary | null): any[] {
   });
 }
 
+
 export function ProductProvider({ children }: { children: React.ReactNode }) {
-  const initialCache = getCachedSync<any>('/api/products');
-  const initialServerProduct = typeof window !== 'undefined' ? (window as any).__INITIAL_PRODUCT__ : null;
-
+  const { pathname } = useLocation();
+  const productId = pathname.startsWith('/product/') ? decodeURIComponent(pathname.split('/')[2] || '') : '';
   const [products, setProducts] = useState<Product[]>(() => {
-    // When the server flags a 404, don't populate from the localStorage cache.
-    // The cached catalog may still contain an old slug (e.g. "-golden-jojoba-oil")
-    // that would match the invalid URL, causing the product to render briefly
-    // before the fresh API call corrects it. Start empty so the slug check in
-    // ProductDetail immediately shows NotFoundPage.
-    if (typeof window !== 'undefined' && (window as any).__INITIAL_NOT_FOUND__) {
-      return [];
-    }
-    if (initialCache?.success && Array.isArray(initialCache.products) && initialCache.products.length > 0) {
-      return initialCache.products;
-    }
-    if (initialServerProduct) {
-      return [initialServerProduct];
-    }
-    return [];
+    const initial = (window as any).__INITIAL_PRODUCT__;
+    return initial && matchesProduct(initial, productId) ? [initial] : [];
   });
-
-  const [storeSettings, setStoreSettings] = useState<any>(
-    initialCache?.storeSettings || {}
-  );
-
-  const [loading, setLoading] = useState(() => {
-    if (initialCache?.success && Array.isArray(initialCache.products) && initialCache.products.length > 0) {
-      return false;
-    }
-    // Server flagged this as a 404 — no product exists, no spinner needed.
-    if (typeof window !== 'undefined' && (window as any).__INITIAL_NOT_FOUND__) {
-      return false;
-    }
-    if (initialServerProduct && typeof window !== 'undefined' && window.location.pathname.startsWith('/product/')) {
-      return false;
-    }
-    return true;
-  });
-
-  // Survives across fetchProducts() calls, so a product refresh (after an admin
-  // edit, say) re-applies the ratings instead of blanking every star.
+  const [storeSettings, setStoreSettings] = useState<any>(() => getCachedSync<any>('/api/store-settings')?.storeSettings || {});
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [resolvedProduct, setResolvedProduct] = useState('');
+  const [failedProduct, setFailedProduct] = useState('');
+  const catalogRequested = useRef(false);
   const ratingSummaryRef = useRef<RatingSummary | null>(null);
 
-  const fetchProducts = useCallback(() => {
-    // A server-flagged 404 has no product and never will — skip the fetch entirely.
-    if (typeof window !== 'undefined' && (window as any).__INITIAL_NOT_FOUND__) {
-      return;
-    }
-
-    const isDirectProductWithInitial =
-      typeof window !== 'undefined' &&
-      window.location.pathname.startsWith('/product/') &&
-      !!(window as any).__INITIAL_PRODUCT__;
-
-    if (!getCachedSync('/api/products') && !isDirectProductWithInitial) {
-      setLoading(true);
-    }
-    
-    // Start both fetches in parallel, but do NOT make the product list wait
-    // on reviews. Previously this awaited reviewsPromise before the first
-    // setProducts() call, so the whole product grid stayed blank until BOTH
-    // requests finished and a per-product review join (O(products x reviews)
-    // in JS) had run — even though the products themselves had already
-    // arrived. Now products render as soon as their own request resolves,
-    // and ratings are patched in afterwards as a second, non-blocking update.
-    //
-    // The second request is the compact ratings summary, not the full review
-    // list. This used to pull /api/reviews in its entirety on every first page
-    // load — the single biggest payload in the app, growing with every review
-    // ever written — purely to derive a star rating and a count per card. Worse,
-    // the join below matched on r.product_id / r.product_name, which public
-    // review objects don't carry (they reference products through a `products`
-    // array), so it always found nothing and the whole download was wasted.
-    const productsPromise = fetchWithCache('/api/products');
-    const summaryPromise = fetchWithCache('/api/reviews/summary').catch(() => null);
-
-    productsPromise
-      .then((data) => {
-        if (data && data.success) {
-          if (data.storeSettings) setStoreSettings(data.storeSettings);
-          if (data.products && Array.isArray(data.products)) {
-            // Ratings applied here too, not only in the summary handler below.
-            //
-            // This is why stars and review counts were missing everywhere. The
-            // two requests race, and the summary is a tiny response while
-            // /api/products is the largest one on the site — so the summary
-            // almost always won. Its handler then called
-            // `setProducts(prev => prev.length === 0 ? prev : ...)`, found an
-            // empty list because the products hadn't arrived yet, and returned
-            // it unchanged. The ratings were dropped on the floor and never
-            // retried, so every product rendered as if it had no reviews.
-            //
-            // Whichever lands first now stores its half and the merge happens
-            // when the second one arrives.
-            setProducts(applyRatingSummary(data.products, ratingSummaryRef.current));
-          } else {
-            setProducts([]);
-          }
-        } else {
-          setProducts([]);
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to load products from DB", err);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-
-    // Attach rating/review-count once the summary arrives, without blocking the
-    // initial render above. The summary is keyed by lowercased product
-    // reference — reviews name their products by id or by name, so try each of
-    // the ones this product answers to.
-    summaryPromise
-      .then((summaryData) => {
-        if (!summaryData || !summaryData.success || !summaryData.summary) return;
-        // Kept so the products handler can use it whichever order they resolve
-        // in, and so a later product refresh doesn't lose the ratings again.
-        ratingSummaryRef.current = summaryData.summary;
-        setProducts((prev) =>
-          prev.length === 0 ? prev : applyRatingSummary(prev, summaryData.summary),
-        );
-      })
-      .catch(() => {});
+  useEffect(() => {
+    let active = true;
+    fetchWithCache('/api/store-settings').then(data => {
+      if (active && data?.storeSettings) setStoreSettings(data.storeSettings);
+    }).catch(() => {});
+    return () => { active = false; };
   }, []);
 
+  // A direct product visit requests one product, regardless of the catalog size.
   useEffect(() => {
-    fetchProducts();
-  }, [fetchProducts]);
+    if (!productId) return;
+    let active = true;
+    setFailedProduct('');
+    fetchWithCache(`/api/products/${encodeURIComponent(productId)}`).then(data => {
+      if (!active) return;
+      if (data?.success && data.product) {
+        setProducts(previous => [...previous.filter(p => String(p.id) !== String(data.product.id)), data.product]);
+        void fetchWithCache('/api/reviews/summary').then(summary => {
+          if (!active || !summary?.success || !summary.summary) return;
+          ratingSummaryRef.current = summary.summary;
+          setProducts(previous => applyRatingSummary(previous, summary.summary));
+        }).catch(() => {});
+      }
+    }).catch(error => {
+      if (!active) return;
+      if (error instanceof Error && error.message === 'HTTP error 404') {
+        setProducts(previous => previous.filter(p => !matchesProduct(p, productId)));
+      } else setFailedProduct(productId);
+    }).finally(() => { if (active) setResolvedProduct(productId); });
+    return () => { active = false; };
+  }, [productId]);
 
-  const value = useMemo(() => ({
-    products, storeSettings, loading, fetchProducts, setProducts, setStoreSettings
-  }), [products, storeSettings, loading, fetchProducts]);
+  // Called by catalog consumers only (a visible collection, listing, or cart).
+  const fetchProducts = useCallback(() => {
+    if (catalogRequested.current) return;
+    catalogRequested.current = true;
+    setCatalogLoading(true);
+    fetchWithCache('/api/products').then(data => {
+      if (!data?.success || !Array.isArray(data.products)) throw new Error('Catalog unavailable');
+      setProducts(applyRatingSummary(data.products, ratingSummaryRef.current));
+      if (data.storeSettings) setStoreSettings(data.storeSettings);
+      // Ratings never delay the catalog's first render.
+      void fetchWithCache('/api/reviews/summary').then(data => {
+        if (!data?.success || !data.summary) return;
+        ratingSummaryRef.current = data.summary;
+        setProducts(previous => applyRatingSummary(previous, data.summary));
+      }).catch(() => {});
+    }).catch(error => {
+      catalogRequested.current = false;
+      console.error('Failed to load catalog', error);
+    }).finally(() => setCatalogLoading(false));
+  }, []);
 
-  return (
-    <ProductContext.Provider value={value}>
-      {children}
-    </ProductContext.Provider>
-  );
+  const loading = productId
+    ? resolvedProduct !== productId && !products.some(p => matchesProduct(p, productId))
+    : catalogLoading;
+  const productError = Boolean(productId && failedProduct === productId);
+  const value = useMemo(() => ({ products, storeSettings, loading, productError,
+    fetchProducts, setProducts, setStoreSettings }),
+    [products, storeSettings, loading, productError, fetchProducts]);
+  return <ProductContext.Provider value={value}>{children}</ProductContext.Provider>;
 }
 
-export function useProducts() {
-  return useContext(ProductContext);
+export function useProducts(requireCatalog = false) {
+  const context = useContext(ProductContext);
+  useEffect(() => {
+    if (requireCatalog) context.fetchProducts();
+  }, [requireCatalog, context.fetchProducts]);
+  return context;
 }

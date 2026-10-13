@@ -1,4 +1,5 @@
 import express from "express";
+import { matchesProduct } from "../../lib/productMatch";
 import { sanitizeCredentials, isMaskedValue } from "../utils/sqlUtils";
 import { normalizeSizeLabel } from "../../lib/sizeUtils";
 
@@ -22,6 +23,27 @@ interface ProductsState {
 
 export function createProductRouter(state: ProductsState) {
   const router = express.Router();
+
+
+  const buildPublicSettings = async () => {
+    await state.refreshStoreSettings?.();
+      const storeSettings = state.getStoreSettings();
+      const publicSettings: any = {
+        enableAr: storeSettings.enableAr !== undefined ? storeSettings.enableAr : true,
+        enableEn: storeSettings.enableEn !== undefined ? storeSettings.enableEn : false,
+        enableFr: storeSettings.enableFr !== undefined ? storeSettings.enableFr : false,
+        ...storeSettings,
+      };
+      delete publicSettings.orders_telegramBotToken;
+      delete publicSettings.orders_telegramChatId;
+      return publicSettings;
+  };
+  router.get("/store-settings", async (_req, res, next) => {
+    try {
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ success: true, storeSettings: await buildPublicSettings() });
+    } catch (error) { next(error); }
+  });
 
   // Public: single product's long-form text fields (description/benefits/etc)
   router.get("/products/:id/data", async (req, res) => {
@@ -185,7 +207,8 @@ export function createProductRouter(state: ProductsState) {
   });
 
   // Public: list products and packs for the storefront
-  router.get("/products", async (_req, res) => {
+  router.get(["/products", "/products/:id"], async (req, res, next) => {
+    try {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Vary", "Accept-Encoding");
@@ -194,21 +217,13 @@ export function createProductRouter(state: ProductsState) {
     const databaseId = sanitizeCredentials(process.env.CLOUDFLARE_D1_DATABASE_ID);
     const apiToken = sanitizeCredentials(process.env.CLOUDFLARE_D1_API_TOKEN);
 
-    const settingsRefresh = state.refreshStoreSettings?.() ?? Promise.resolve();
-    settingsRefresh.catch(() => {});
-
-    const buildPublicSettings = async () => {
-      await settingsRefresh;
-      const storeSettings = state.getStoreSettings();
-      const publicSettings: any = {
-        enableAr: storeSettings.enableAr !== undefined ? storeSettings.enableAr : true,
-        enableEn: storeSettings.enableEn !== undefined ? storeSettings.enableEn : false,
-        enableFr: storeSettings.enableFr !== undefined ? storeSettings.enableFr : false,
-        ...storeSettings,
-      };
-      delete publicSettings.orders_telegramBotToken;
-      delete publicSettings.orders_telegramChatId;
-      return publicSettings;
+    const sendProducts = async (products: any[]) => {
+      if (req.params.id) {
+        const product = products.find(p => matchesProduct(p, req.params.id));
+        if (!product) return res.status(404).json({ success: false, product: null });
+        return res.json({ success: true, product });
+      }
+      return res.json({ success: true, products, storeSettings: await buildPublicSettings() });
     };
 
     if (!accountId || !databaseId || !apiToken || isMaskedValue(accountId)) {
@@ -240,7 +255,7 @@ export function createProductRouter(state: ProductsState) {
           }
         })(),
       })).filter((p) => p.in_catalog !== 0 && p.in_catalog !== "0");
-      return res.json({ success: true, products: safeProducts, storeSettings: await buildPublicSettings() });
+      return await sendProducts(safeProducts);
     }
 
     const D1_CACHE_TTL_MS = 5 * 1000;
@@ -249,18 +264,20 @@ export function createProductRouter(state: ProductsState) {
 
     if (needsRefresh) {
       const liveProducts = await state.fetchProductsFromD1();
-      if (liveProducts && liveProducts.length > 0) {
+      if (liveProducts !== null) {
         state.setD1Products(liveProducts);
         state.syncD1ToClassicProducts();
         const mapped = liveProducts.map(state.mapD1RowToProductSchema).filter(Boolean);
         state.setD1ApiCacheProducts({ data: mapped, timestamp: Date.now() });
+      } else if (req.params.id && !cache.data) {
+        return res.status(503).json({ success: false, message: "Product data temporarily unavailable" });
       }
     }
 
     const updatedCache = state.getD1ApiCacheProducts();
     if (updatedCache.data && updatedCache.data.length > 0) {
       const activeProducts = updatedCache.data.filter((p: any) => p.in_catalog !== 0 && p.in_catalog !== "0" && p.in_catalog !== false);
-      return res.json({ success: true, products: activeProducts, storeSettings: await buildPublicSettings() });
+      return await sendProducts(activeProducts);
     }
 
     const d1_products = state.getD1Products();
@@ -308,10 +325,11 @@ export function createProductRouter(state: ProductsState) {
           })(),
         };
       });
-      return res.json({ success: true, products: mapped, storeSettings: await buildPublicSettings() });
+      return await sendProducts(mapped);
     }
 
-    return res.json({ success: true, products: [], storeSettings: await buildPublicSettings() });
+    return await sendProducts([]);
+    } catch (error) { next(error); }
   });
 
   return router;

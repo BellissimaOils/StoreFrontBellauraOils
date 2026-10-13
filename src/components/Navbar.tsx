@@ -41,7 +41,7 @@ function normalizePath(p: string): string {
 export default function Navbar() {
   const { totalItems, isCartOpen, setIsCartOpen } = useCart();
   const { language, setLanguage, t } = useLanguage();
-  const { storeSettings, loading: storeLoading } = useProducts();
+  const { storeSettings } = useProducts();
   const location = useLocation();
   const [isLangOpen, setIsLangOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -164,7 +164,7 @@ export default function Navbar() {
               {/* Left side: Mobile Actions (Languages & Auth) */}
               <div className="flex items-center gap-2">
                 {/* Language Switcher */}
-                {!storeLoading && languages.length > 1 && (
+                {Object.keys(storeSettings).length > 0 && languages.length > 1 && (
                 <div className="relative" id="language-selector-mobile">
                   <button 
                     onClick={() => setIsLangOpen(!isLangOpen)}
@@ -231,7 +231,7 @@ export default function Navbar() {
               </button>
 
               {/* Language Switcher */}
-              {!storeLoading && languages.length > 1 && (
+              {Object.keys(storeSettings).length > 0 && languages.length > 1 && (
               <div className="relative" id="language-selector-desktop">
                 <button 
                   onClick={() => setIsLangOpen(!isLangOpen)}
