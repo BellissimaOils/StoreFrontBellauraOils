@@ -34,6 +34,7 @@ interface AnalyticsState {
 
 export function createAnalyticsRouter(state: AnalyticsState) {
   const router = express.Router();
+  let schemaReady: Promise<boolean> | null = null;
 
   router.post("/analytics/collect", analyticsLimiter, async (req, res) => {
     try {
@@ -78,7 +79,9 @@ export function createAnalyticsRouter(state: AnalyticsState) {
       const validSource = typeof source === "string" ? source.trim().substring(0, 50) || "Direct" : "Direct";
       const validFirstTouch =
         typeof firstTouchSource === "string" ? firstTouchSource.trim().substring(0, 50) || "Direct" : "Direct";
-      const validLanding = typeof landingPage === "string" ? landingPage.trim().substring(0, 255) : "/";
+      const validLanding = typeof landingPage === "string" && landingPage.trim().startsWith("/")
+        ? landingPage.trim().replace(/[\u0000-\u001f]/g, "").substring(0, 255)
+        : "/";
 
       const utmObj = typeof utms === "object" && utms !== null ? utms : {};
       const utmSource = typeof utmObj.utm_source === "string" ? utmObj.utm_source.trim().substring(0, 50) : null;
@@ -90,7 +93,8 @@ export function createAnalyticsRouter(state: AnalyticsState) {
       const nowIso = new Date().toISOString();
 
       // Ensure D1 schema tables exist
-      await ensureD1AnalyticsTablesExist();
+      schemaReady ??= ensureD1AnalyticsTablesExist();
+      if (!(await schemaReady)) schemaReady = null;
 
       // 3. Upsert visitor
       const visitorSql = `INSERT INTO analytics_visitors (
@@ -107,16 +111,22 @@ export function createAnalyticsRouter(state: AnalyticsState) {
       ]);
 
       // 4. Upsert session
+      const sessionStart = events.find((ev: any) => ev?.eventName === "session_start");
+      const sessionMetadata = sessionStart?.metadata && typeof sessionStart.metadata === "object" ? sessionStart.metadata : {};
+      const sessionReferrer = typeof sessionMetadata.referrer === "string"
+        ? sessionMetadata.referrer.trim().substring(0, 200)
+        : null;
+
       const sessionSql = `INSERT INTO analytics_sessions (
         id, visitor_id, landing_page, referrer, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, country, city, started_at, ended_at, duration_seconds
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0)
       ON CONFLICT(id) DO UPDATE SET
         ended_at = excluded.ended_at;`;
       await state.executeD1Query(sessionSql, [
         validSessionId,
         validVisitorId,
         validLanding,
-        null,
+        sessionReferrer,
         validSource,
         utmSource,
         utmMedium,
@@ -126,22 +136,30 @@ export function createAnalyticsRouter(state: AnalyticsState) {
         country,
         city,
         nowIso,
-        nowIso,
       ]);
 
       // 5. Insert events with strict item validation
+      let processed = 0;
       for (const ev of events) {
         if (!ev || typeof ev !== "object") continue;
 
         const eventName = typeof ev.eventName === "string" ? ev.eventName.trim() : "";
         if (!ALLOWED_EVENT_NAMES.has(eventName)) continue;
 
-        const eventPath = typeof ev.path === "string" ? ev.path.trim().substring(0, 255) : null;
+        const eventPath = typeof ev.path === "string" && ev.path.trim().startsWith("/")
+          ? ev.path.trim().replace(/[\u0000-\u001f]/g, "").substring(0, 255)
+          : null;
         const productId = typeof ev.productId === "string" || typeof ev.productId === "number" ? String(ev.productId).substring(0, 100) : null;
         const productName = typeof ev.productName === "string" ? ev.productName.trim().substring(0, 150) : null;
-        const quantity = Number.isInteger(Number(ev.quantity)) ? Math.max(1, Math.min(100, Number(ev.quantity))) : null;
-        const unitPrice = Number.isFinite(Number(ev.unitPrice)) ? Math.max(0, Number(ev.unitPrice)) : null;
-        const activeDurationMs = Number.isInteger(Number(ev.activeDurationMs)) ? Math.max(0, Math.min(1800000, Number(ev.activeDurationMs))) : 0;
+        const quantity = typeof ev.quantity === "number" && Number.isInteger(ev.quantity)
+          ? Math.max(1, Math.min(100, ev.quantity))
+          : null;
+        const unitPrice = typeof ev.unitPrice === "number" && Number.isFinite(ev.unitPrice)
+          ? Math.max(0, ev.unitPrice)
+          : null;
+        const activeDurationMs = typeof ev.activeDurationMs === "number" && Number.isInteger(ev.activeDurationMs)
+          ? Math.max(0, Math.min(1800000, ev.activeDurationMs))
+          : 0;
         
         let metadataStr: string | null = null;
         if (ev.metadata && typeof ev.metadata === "object") {
@@ -151,13 +169,14 @@ export function createAnalyticsRouter(state: AnalyticsState) {
           } catch {}
         }
 
-        const createdAt = typeof ev.createdAt === "string" ? ev.createdAt.substring(0, 35) : nowIso;
+        const parsedCreatedAt = typeof ev.createdAt === "string" ? Date.parse(ev.createdAt) : NaN;
+        const createdAt = Number.isFinite(parsedCreatedAt) ? new Date(parsedCreatedAt).toISOString() : nowIso;
 
         const insertEventSql = `INSERT INTO analytics_events (
           session_id, visitor_id, event_name, path, product_id, product_name, quantity, unit_price, active_duration_ms, metadata, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`;
 
-        await state.executeD1Query(insertEventSql, [
+        const inserted = await state.executeD1Query(insertEventSql, [
           validSessionId,
           validVisitorId,
           eventName,
@@ -170,9 +189,22 @@ export function createAnalyticsRouter(state: AnalyticsState) {
           metadataStr,
           createdAt,
         ]);
+        if (inserted) processed += 1;
       }
 
-      return res.status(200).json({ success: true, processed: events.length });
+      // Keep the session summary in step with accepted page-view engagement.
+      // Summing persisted events makes retries safe and avoids double-counting.
+      await state.executeD1Query(
+        `UPDATE analytics_sessions
+         SET duration_seconds = CAST((
+           SELECT COALESCE(SUM(active_duration_ms), 0) / 1000
+           FROM analytics_events WHERE session_id = ?
+         ) AS INTEGER)
+         WHERE id = ?;`,
+        [validSessionId, validSessionId],
+      );
+
+      return res.status(200).json({ success: true, processed });
     } catch (err) {
       console.error("[Analytics Intake Error]", err);
       // Non-blocking fail-open response

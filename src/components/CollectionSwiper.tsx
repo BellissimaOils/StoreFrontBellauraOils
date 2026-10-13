@@ -43,7 +43,7 @@ interface CollectionSwiperProps {
  */
 export default function CollectionSwiper({ title, subtitle, content }: CollectionSwiperProps) {
   const { t, language } = useLanguage();
-  const { products, loading, storeSettings } = useProducts(true);
+  const { featuredProducts, featuredLoading, storeSettings } = useProducts();
   const { addToCart } = useCart();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
@@ -52,7 +52,7 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
   const [addedId, setAddedId] = useState<string | null>(null);
   const isAr = language === 'ar';
 
-  const displayProducts = useMemo(() => products.filter(isCollectionProduct), [products]);
+  const displayProducts = useMemo(() => featuredProducts.filter(isCollectionProduct), [featuredProducts]);
 
   const checkScroll = () => {
     if (!scrollRef.current) return;
@@ -79,7 +79,7 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
   };
 
   useEffect(() => {
-    if (loading) return;
+    if (featuredLoading) return;
     checkScroll();
     let resizeTimer: number | undefined;
     const handleResize = () => {
@@ -91,7 +91,7 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
       if (resizeTimer) clearTimeout(resizeTimer);
       window.removeEventListener('resize', handleResize);
     };
-  }, [displayProducts, loading]);
+  }, [displayProducts, featuredLoading]);
 
   // Desktop mouse drag-to-scroll. Deliberately gated to pointerType==='mouse'
   // so touch devices keep the browser's own native scroll/momentum — adding
@@ -169,7 +169,7 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
     setTimeout(() => setAddedId((current) => (current === product.id ? null : current)), 1500);
   };
 
-  if (loading) {
+  if (featuredLoading && displayProducts.length === 0) {
     return (
       <section className="py-10 sm:py-16 bg-background-soft overflow-hidden relative">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-8 flex flex-col items-center text-center gap-3">
@@ -320,8 +320,8 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
                       <img
                         src={getOptimizedImageUrl(pack.image, 'eco', 500) || undefined}
                         alt={pack.name}
-                        loading={index < 4 ? "eager" : "lazy"}
-                        fetchPriority={index < 4 ? "auto" : "low"}
+                        loading={index < 2 ? "eager" : "lazy"}
+                        fetchPriority={index === 0 ? "high" : index < 3 ? "auto" : "low"}
                         decoding="async"
                         draggable={false}
                         className="w-full h-full object-contain p-4 transition-transform duration-700 ease-out group-hover:scale-[1.08]"

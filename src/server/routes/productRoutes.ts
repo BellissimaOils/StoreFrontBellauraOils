@@ -16,6 +16,7 @@ interface ProductsState {
   getStoreSettings: () => any;
   refreshStoreSettings?: (force?: boolean) => Promise<void>;
   fetchProductsFromD1: () => Promise<any[] | null>;
+  fetchFeaturedProductsFromD1?: () => Promise<any[] | null>;
   syncD1ToClassicProducts: () => void;
   mapD1RowToProductSchema: (row: any) => any;
   ensureProductsDataTablesExist: () => Promise<boolean>;
@@ -23,6 +24,7 @@ interface ProductsState {
 
 export function createProductRouter(state: ProductsState) {
   const router = express.Router();
+  let featuredCache: { products: any[]; timestamp: number } | null = null;
 
 
   const buildPublicSettings = async () => {
@@ -43,6 +45,38 @@ export function createProductRouter(state: ProductsState) {
       res.setHeader("Cache-Control", "no-store");
       res.json({ success: true, storeSettings: await buildPublicSettings() });
     } catch (error) { next(error); }
+  });
+
+  // Home's first carousel must not wait for the full product catalog and its
+  // long descriptions. Return just the first visible carousel items.
+  router.get("/products/featured", async (_req, res) => {
+    res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+    try {
+      if (!featuredCache || Date.now() - featuredCache.timestamp > 30_000) {
+        const rows = await state.fetchFeaturedProductsFromD1?.();
+        let featured: any[];
+        if (rows) {
+          featured = rows.map(state.mapD1RowToProductSchema).filter(Boolean);
+        } else {
+          const catalog = state.getD1ApiCacheProducts().data || state.getProducts();
+          featured = Array.isArray(catalog) ? catalog : [];
+        }
+        featured = featured.filter((p: any) => {
+          const available = p.isAvailable !== false && p.isAvailable !== 0 && p.isAvailable !== "0";
+          const inCatalog = p.in_catalog !== false && p.in_catalog !== 0 && p.in_catalog !== "0";
+          const swiper = p.showInSwiper !== false && p.showInSwiper !== 0 && p.showInSwiper !== "0";
+          const section = String(p.displaySection || "both").toLowerCase();
+          return available && inCatalog && swiper && section !== "products" && section !== "packs" && section !== "none";
+        }).slice(0, 24);
+        featuredCache = { products: featured, timestamp: Date.now() };
+      }
+      return res.json({ success: true, products: featuredCache.products });
+    } catch (error) {
+      console.error("Failed to load featured products:", error);
+      const catalog = state.getD1ApiCacheProducts().data || state.getProducts();
+      const products = Array.isArray(catalog) ? catalog.slice(0, 24) : [];
+      return res.json({ success: true, products });
+    }
   });
 
   // Public: single product's long-form text fields (description/benefits/etc)

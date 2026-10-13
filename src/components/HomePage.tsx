@@ -98,9 +98,7 @@ const ProgressiveImage = ({ src, alt, className, imgClassName, wrapClassName, lo
 };
 
 function HomePage() {
-  const { products, fetchProducts } = useProducts();
-  const [primaryReady, setPrimaryReady] = React.useState(false);
-  const markPrimaryReady = React.useCallback(() => setPrimaryReady(true), []);
+  const { featuredProducts, fetchFeaturedProducts } = useProducts();
   const warmedImages = React.useRef(new Map<string, HTMLImageElement>());
   const { t, language } = useLanguage();
   const isAr = language === "ar";
@@ -157,30 +155,27 @@ function HomePage() {
   }, []);
 
   const hasCollection = sections.some(s => s.type === 'collection');
-  const canWarmCollection = primaryReady || (hasFetched && sections.length > 0 &&
-    !sections.some(s => (s.type === 'hero' || s.type === 'paragraph') && s.image_url));
-
-  // Once the primary image finishes, prepare only the first carousel viewport.
-  // This removes the API -> chunk -> image waterfall even before scrolling.
+  // Start the small featured-products request as soon as Home knows the
+  // collection exists. Waiting for the hero image serialized independent work.
   React.useEffect(() => {
-    if (!hasCollection || !canWarmCollection) return;
-    fetchProducts();
+    if (!hasCollection) return;
+    fetchFeaturedProducts();
     void import('./CollectionSwiper').catch(() => {});
-  }, [hasCollection, canWarmCollection, fetchProducts]);
+  }, [hasCollection, fetchFeaturedProducts]);
 
   React.useEffect(() => {
-    if (!hasCollection || !canWarmCollection) return;
-    products.filter(isCollectionProduct).slice(0, 4).forEach(product => {
+    if (!hasCollection || featuredProducts.length === 0) return;
+    featuredProducts.filter(isCollectionProduct).slice(0, 4).forEach((product, index) => {
       const src = getOptimizedImageUrl(product.image, 'eco', 500);
       if (!src || warmedImages.current.has(src)) return;
       const image = new Image();
       image.referrerPolicy = 'no-referrer';
       image.decoding = 'async';
-      image.fetchPriority = 'auto';
+      image.fetchPriority = index === 0 ? 'high' : 'auto';
       warmedImages.current.set(src, image);
       image.src = src;
     });
-  }, [products, hasCollection, canWarmCollection]);
+  }, [featuredProducts, hasCollection]);
 
   const renderSection = (s: any, idx: number) => {
     const isEn = language === "en";
@@ -332,7 +327,6 @@ function HomePage() {
               loading={isFirstImage ? "eager" : "lazy"}
               fetchPriority={isFirstImage ? "high" : "low"}
               decoding={isFirstImage ? "sync" : "async"}
-                    onReady={isFirstImage ? markPrimaryReady : undefined}
             />
           </div>
 
@@ -572,7 +566,6 @@ function HomePage() {
                     loading={isFirstImage ? "eager" : "lazy"}
                     fetchPriority={isFirstImage ? "high" : "low"}
                     decoding={isFirstImage ? "sync" : "async"}
-                    onReady={isFirstImage ? markPrimaryReady : undefined}
                   />
                   <div className="absolute inset-0 bg-primary-earth/10 group-hover:bg-transparent transition-colors duration-700 pointer-events-none" />
                   <div className="hidden lg:block absolute -top-3 -left-3 w-12 h-12 border-t border-l border-accent-gold/40 pointer-events-none" />
@@ -750,7 +743,7 @@ function HomePage() {
           {sections.map((s, idx) => (
             <DeferredSection key={s.id || idx} eager={idx < 2}
               preloadDistance={s.type === 'collection' ? 1200 : 300}
-              onApproach={s.type === 'collection' ? fetchProducts : undefined}>
+              onApproach={s.type === 'collection' ? fetchFeaturedProducts : undefined}>
               {() => <React.Suspense fallback={<div className="min-h-[300px] bg-background-soft animate-pulse" />}>
                 {renderSection(s, idx)}
               </React.Suspense>}

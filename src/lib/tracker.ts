@@ -36,8 +36,10 @@ const STORAGE_KEY_SESSION_ID = 'bellaura_session_id';
 const STORAGE_KEY_LAST_ACTIVE = 'bellaura_session_last_active';
 const STORAGE_KEY_FIRST_TOUCH_SOURCE = 'bellaura_first_touch_source';
 const STORAGE_KEY_FIRST_LANDING = 'bellaura_first_landing_page';
+const STORAGE_KEY_SESSION_LANDING = 'bellaura_session_landing_page';
 const STORAGE_KEY_CURRENT_SOURCE = 'bellaura_session_source';
 const STORAGE_KEY_CURRENT_CAMPAIGN = 'bellaura_utm_campaign';
+const STORAGE_KEY_SESSION_ATTRIBUTION = 'bellaura_session_attribution';
 
 const SESSION_INACTIVITY_LIMIT_MS = 30 * 60 * 1000; // 30 minutes
 const MAX_BATCH_SIZE = 8;
@@ -74,26 +76,29 @@ function classifyTrafficSource(url: URL, referrerStr: string): { source: string;
   if (utmTerm) utms.utm_term = utmTerm;
 
   // 1. Explicit UTM Priority
-  if (utmSource.includes('tiktok')) return { source: 'TikTok', utms };
-  if (utmSource.includes('instagram') || utmSource.includes('ig')) return { source: 'Instagram', utms };
-  if (utmSource.includes('facebook') || utmSource.includes('fb')) return { source: 'Facebook', utms };
-  if (utmSource.includes('google')) return { source: 'Google', utms };
-  if (utmSource.includes('youtube')) return { source: 'YouTube', utms };
-  if (utmSource.includes('whatsapp') || utmSource.includes('wa')) return { source: 'WhatsApp', utms };
+  const sourceTokens = utmSource.split(/[^a-z0-9]+/).filter(Boolean);
+  if (sourceTokens.includes('tiktok')) return { source: 'TikTok', utms };
+  if (sourceTokens.some(token => ['instagram', 'ig'].includes(token))) return { source: 'Instagram', utms };
+  if (sourceTokens.some(token => ['facebook', 'fb', 'meta'].includes(token))) return { source: 'Facebook', utms };
+  if (sourceTokens.includes('google')) return { source: 'Google', utms };
+  if (sourceTokens.includes('youtube') || sourceTokens.includes('youtu')) return { source: 'YouTube', utms };
+  if (sourceTokens.some(token => ['whatsapp', 'wa'].includes(token))) return { source: 'WhatsApp', utms };
 
   // 2. Recognizable External Referrer Priority
   if (referrerStr) {
     try {
       const refHost = new URL(referrerStr).hostname.toLowerCase();
-      if (refHost.includes('tiktok.com')) return { source: 'TikTok', utms };
-      if (refHost.includes('instagram.com')) return { source: 'Instagram', utms };
-      if (refHost.includes('facebook.com') || refHost.includes('fb.me') || refHost.includes('l.messenger.com')) return { source: 'Facebook', utms };
-      if (refHost.includes('google.') || refHost.includes('google.com')) return { source: 'Google', utms };
-      if (refHost.includes('youtube.com') || refHost.includes('youtu.be')) return { source: 'YouTube', utms };
-      if (refHost.includes('whatsapp.com') || refHost.includes('wa.me')) return { source: 'WhatsApp', utms };
+      const isDomain = (domain: string) => refHost === domain || refHost.endsWith(`.${domain}`);
+      if (isDomain('tiktok.com')) return { source: 'TikTok', utms };
+      if (isDomain('instagram.com')) return { source: 'Instagram', utms };
+      if (isDomain('facebook.com') || isDomain('fb.me') || isDomain('messenger.com')) return { source: 'Facebook', utms };
+      if (isDomain('google.com') || /^google\.[a-z.]+$/.test(refHost)) return { source: 'Google', utms };
+      if (isDomain('youtube.com') || isDomain('youtu.be')) return { source: 'YouTube', utms };
+      if (isDomain('whatsapp.com') || isDomain('wa.me')) return { source: 'WhatsApp', utms };
 
       // Self-referrer or internal navigation is considered Direct continuation
-      if (refHost === window.location.hostname.toLowerCase()) {
+      const currentHost = window.location.hostname.toLowerCase().replace(/^www\./, '');
+      if (refHost.replace(/^www\./, '') === currentHost) {
         return { source: 'Direct', utms };
       }
       return { source: 'Other', utms };
@@ -153,40 +158,57 @@ class StorefrontTracker {
     }
     this.visitorId = vId;
 
-    // 2. Acquisition & Source Classification
+    // 2. Determine whether this is a new session before resolving attribution.
+    const existingSessionId = localStorage.getItem(STORAGE_KEY_SESSION_ID);
+    const lastActiveStr = localStorage.getItem(STORAGE_KEY_LAST_ACTIVE);
+    const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : 0;
+    const isSessionExpired = !existingSessionId || !Number.isFinite(lastActive) ||
+      now - lastActive > SESSION_INACTIVITY_LIMIT_MS;
+
+    // 3. Acquisition & Source Classification. A direct/self-referral visit
+    // during an active session must not overwrite its original campaign.
     const currentUrl = new URL(window.location.href);
     const referrerStr = document.referrer || '';
-    const { source, utms } = classifyTrafficSource(currentUrl, referrerStr);
-    this.sessionSource = source;
-    this.utmParams = utms;
+    const classified = classifyTrafficSource(currentUrl, referrerStr);
+    if (isSessionExpired) {
+      this.sessionSource = classified.source;
+      this.utmParams = classified.utms;
+    } else {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY_SESSION_ATTRIBUTION) || 'null');
+        this.sessionSource = typeof saved?.source === 'string'
+          ? saved.source
+          : localStorage.getItem(STORAGE_KEY_CURRENT_SOURCE) || 'Direct';
+        this.utmParams = saved?.utms && typeof saved.utms === 'object'
+          ? saved.utms
+          : (localStorage.getItem(STORAGE_KEY_CURRENT_CAMPAIGN)
+            ? { utm_campaign: localStorage.getItem(STORAGE_KEY_CURRENT_CAMPAIGN)! }
+            : {});
+      } catch {
+        this.sessionSource = localStorage.getItem(STORAGE_KEY_CURRENT_SOURCE) || 'Direct';
+        this.utmParams = {};
+      }
+    }
 
     // Record First Touch if absent
     if (!localStorage.getItem(STORAGE_KEY_FIRST_TOUCH_SOURCE)) {
       try {
-        localStorage.setItem(STORAGE_KEY_FIRST_TOUCH_SOURCE, source);
+        localStorage.setItem(STORAGE_KEY_FIRST_TOUCH_SOURCE, classified.source);
         localStorage.setItem(STORAGE_KEY_FIRST_LANDING, window.location.pathname);
       } catch {}
     }
 
-    try {
-      localStorage.setItem(STORAGE_KEY_CURRENT_SOURCE, source);
-      if (utms.utm_campaign) {
-        localStorage.setItem(STORAGE_KEY_CURRENT_CAMPAIGN, utms.utm_campaign);
-      }
-    } catch {}
-
-    // 3. Session ID (30 min inactivity boundary, shared across tabs)
-    const existingSessionId = localStorage.getItem(STORAGE_KEY_SESSION_ID);
-    const lastActiveStr = localStorage.getItem(STORAGE_KEY_LAST_ACTIVE);
-    const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : 0;
-
-    const isSessionExpired = !existingSessionId || (now - lastActive > SESSION_INACTIVITY_LIMIT_MS);
-
+    // 4. Session ID (30 min inactivity boundary, shared across tabs)
     if (isSessionExpired) {
       this.sessionId = generateUUID();
       try {
         localStorage.setItem(STORAGE_KEY_SESSION_ID, this.sessionId);
         localStorage.setItem(STORAGE_KEY_LAST_ACTIVE, String(now));
+        localStorage.setItem(STORAGE_KEY_SESSION_LANDING, window.location.pathname);
+        localStorage.setItem(STORAGE_KEY_CURRENT_SOURCE, this.sessionSource);
+        localStorage.setItem(STORAGE_KEY_SESSION_ATTRIBUTION, JSON.stringify({ source: this.sessionSource, utms: this.utmParams }));
+        if (this.utmParams.utm_campaign) localStorage.setItem(STORAGE_KEY_CURRENT_CAMPAIGN, this.utmParams.utm_campaign);
+        else localStorage.removeItem(STORAGE_KEY_CURRENT_CAMPAIGN);
       } catch {}
 
       // New session detected -> emit session_start
@@ -211,6 +233,18 @@ class StorefrontTracker {
     window.addEventListener('storage', (e) => {
       if (e.key === STORAGE_KEY_SESSION_ID && e.newValue) {
         this.sessionId = e.newValue;
+        try {
+          const saved = JSON.parse(localStorage.getItem(STORAGE_KEY_SESSION_ATTRIBUTION) || 'null');
+          if (typeof saved?.source === 'string') this.sessionSource = saved.source;
+          if (saved?.utms && typeof saved.utms === 'object') this.utmParams = saved.utms;
+        } catch {}
+      }
+      if (e.key === STORAGE_KEY_SESSION_ATTRIBUTION && e.newValue) {
+        try {
+          const saved = JSON.parse(e.newValue);
+          if (typeof saved?.source === 'string') this.sessionSource = saved.source;
+          if (saved?.utms && typeof saved.utms === 'object') this.utmParams = saved.utms;
+        } catch {}
       }
     });
   }
@@ -320,7 +354,8 @@ class StorefrontTracker {
       sessionId: this.sessionId,
       source: this.sessionSource,
       firstTouchSource: localStorage.getItem(STORAGE_KEY_FIRST_TOUCH_SOURCE) || 'Direct',
-      landingPage: localStorage.getItem(STORAGE_KEY_FIRST_LANDING) || window.location.pathname,
+      landingPage: localStorage.getItem(STORAGE_KEY_SESSION_LANDING) ||
+        localStorage.getItem(STORAGE_KEY_FIRST_LANDING) || window.location.pathname,
       utms: this.utmParams,
       events: eventsToSend,
     };
@@ -329,7 +364,10 @@ class StorefrontTracker {
 
     if (isExiting && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
       try {
-        const beaconSuccess = navigator.sendBeacon('/api/analytics/collect', payloadJson);
+        const beaconSuccess = navigator.sendBeacon(
+          '/api/analytics/collect',
+          new Blob([payloadJson], { type: 'application/json' }),
+        );
         if (beaconSuccess) return;
       } catch (e) {
         // Fall back to fetch keepalive
@@ -341,12 +379,19 @@ class StorefrontTracker {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: payloadJson,
-        keepalive: isExiting,
+        // These batches are small and must survive a fast route change after
+        // checkout_start or purchase_complete has emptied the local queue.
+        keepalive: true,
+      }).then(async (response) => {
+        if (!response.ok) throw new Error('Analytics request failed');
+        const result = await response.json().catch(() => null);
+        if (result?.success === false) throw new Error('Analytics batch was not accepted');
       }).catch(() => {
-        // Silent failure — analytics must NEVER disrupt storefront
+        // Keep failed events for the next flush, without blocking shopping.
+        this.eventQueue = [...eventsToSend, ...this.eventQueue].slice(-40);
       });
     } catch {
-      // Silent failure
+      this.eventQueue = [...eventsToSend, ...this.eventQueue].slice(-40);
     }
   }
 

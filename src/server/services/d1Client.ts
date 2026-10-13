@@ -418,6 +418,45 @@ export async function fetchRealD1ProductsIfConfigured(
   return null;
 }
 
+// Home only needs the small, visible collection. Reading every product row
+// before showing those cards made the first carousel wait on the full catalog.
+// Keep this query bounded; product detail pages still use the full catalog route.
+export async function fetchRealD1FeaturedProductsIfConfigured(): Promise<any[] | null> {
+  const accountId = sanitizeCredentials(process.env.CLOUDFLARE_D1_ACCOUNT_ID);
+  const databaseId = sanitizeCredentials(process.env.CLOUDFLARE_D1_DATABASE_ID);
+  const apiToken = sanitizeCredentials(process.env.CLOUDFLARE_D1_API_TOKEN);
+  if (!accountId || !databaseId || !apiToken || isMaskedValue(accountId)) return null;
+
+  try {
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sql: `SELECT p.product_nbr, p.name, p.name_en, p.price, p.discount_applicable,
+            p.discount_price, p.available, p.size_ml, p.size_label, p.image_url,
+            p.show_in_swiper, p.in_catalog, p.category, p.order_index, p.slug,
+            p.is_pack, p.pack_product_ids, p.show_size, pd.tag AS tag
+            FROM products p LEFT JOIN products_Data pd ON p.product_nbr = pd.product_id
+            WHERE COALESCE(in_catalog, 1) = 1 AND COALESCE(available, 1) = 1
+              AND COALESCE(show_in_swiper, 1) = 1
+            ORDER BY order_index ASC, product_nbr ASC LIMIT 24;`,
+        }),
+      },
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!data?.success) return null;
+    const result = data.result?.[0] || data.result || null;
+    const rows = Array.isArray(result?.results) ? result.results : result;
+    return Array.isArray(rows) ? rows : null;
+  } catch (error) {
+    console.error("Error fetching featured products from Cloudflare D1:", error);
+    return null;
+  }
+}
+
 // (fetchRealD1ImagesIfConfigured removed — the `images` D1 table is retired,
 // so it had already been reduced to a stub that parsed credentials and then
 // unconditionally returned null. Image listings come from R2 + the local

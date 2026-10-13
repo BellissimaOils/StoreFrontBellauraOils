@@ -21,6 +21,7 @@ server.use('/api', createProductRouter({
   setD1ApiCacheProducts: () => {},
   getStoreSettings: () => ({ enableAr: true, orders_telegramBotToken: 'private', orders_telegramChatId: 'private' }),
   refreshStoreSettings: async () => {}, fetchProductsFromD1: async () => null,
+  fetchFeaturedProductsFromD1: async () => null,
   syncD1ToClassicProducts: () => {}, mapD1RowToProductSchema: row => row,
   ensureProductsDataTablesExist: async () => true,
 }));
@@ -33,6 +34,8 @@ try {
   assert.equal(catalogReads, 0, 'settings must not read the catalog');
   assert.equal(settings.storeSettings.orders_telegramBotToken, undefined);
   assert.equal(settings.storeSettings.orders_telegramChatId, undefined);
+  const featured = await (await fetch(`${base}/api/products/featured`)).json();
+  assert.deepEqual(featured.products.map((p: any) => p.slug), ['argan', 'jojoba']);
   for (const id of ['1', 'argan', 'argan-oil']) {
     const response = await fetch(`${base}/api/products/${id}`);
     const body = await response.json();
@@ -45,7 +48,7 @@ try {
   const catalog = await (await fetch(`${base}/api/products`)).json();
   assert.equal(catalog.products.length, 2);
   assert.ok(matchesProduct(products[1], 'JOJOBA'));
-  console.log('PASS: settings isolation, private settings, single product IDs/slugs, hidden/missing products, catalog compatibility');
+  console.log('PASS: settings isolation, featured collection, private settings, single product IDs/slugs, hidden/missing products, catalog compatibility');
 } finally { listener.close(); }
 
 // Cold startup must not touch D1/R2 before the first route is known.

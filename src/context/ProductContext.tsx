@@ -6,16 +6,19 @@ import { matchesProduct } from '../lib/productMatch';
 
 interface ProductContextType {
   products: Product[];
+  featuredProducts: Product[];
+  featuredLoading: boolean;
   storeSettings: any;
   loading: boolean;
   productError: boolean;
   fetchProducts: () => void;
+  fetchFeaturedProducts: () => void;
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   setStoreSettings: React.Dispatch<React.SetStateAction<any>>;
 }
 const ProductContext = createContext<ProductContextType>({
-  products: [], storeSettings: {}, loading: true, productError: false,
-  fetchProducts: () => {}, setProducts: () => {}, setStoreSettings: () => {},
+  products: [], featuredProducts: [], featuredLoading: false, storeSettings: {}, loading: true, productError: false,
+  fetchProducts: () => {}, fetchFeaturedProducts: () => {}, setProducts: () => {}, setStoreSettings: () => {},
 });
 /** Ratings keyed by lowercased product reference, as /api/reviews/summary returns them. */
 type RatingSummary = Record<string, { count: number; rating: string }>;
@@ -55,11 +58,16 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
     const initial = (window as any).__INITIAL_PRODUCT__;
     return initial && matchesProduct(initial, productId) ? [initial] : [];
   });
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>(() =>
+    getCachedSync<any>('/api/products/featured', 30_000)?.products || [],
+  );
+  const [featuredLoading, setFeaturedLoading] = useState(true);
   const [storeSettings, setStoreSettings] = useState<any>(() => getCachedSync<any>('/api/store-settings')?.storeSettings || {});
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [resolvedProduct, setResolvedProduct] = useState('');
   const [failedProduct, setFailedProduct] = useState('');
   const catalogRequested = useRef(false);
+  const featuredRequested = useRef(false);
   const ratingSummaryRef = useRef<RatingSummary | null>(null);
 
   useEffect(() => {
@@ -115,13 +123,31 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
     }).finally(() => setCatalogLoading(false));
   }, []);
 
+  const fetchFeaturedProducts = useCallback(() => {
+    if (featuredRequested.current) return;
+    featuredRequested.current = true;
+    setFeaturedLoading(true);
+    fetchWithCache('/api/products/featured', 30_000).then(data => {
+      if (!data?.success || !Array.isArray(data.products)) throw new Error('Featured products unavailable');
+      setFeaturedProducts(data.products);
+      void fetchWithCache('/api/reviews/summary').then(summary => {
+        if (!summary?.success || !summary.summary) return;
+        ratingSummaryRef.current = summary.summary;
+        setFeaturedProducts(previous => applyRatingSummary(previous, summary.summary));
+      }).catch(() => {});
+    }).catch(error => {
+      featuredRequested.current = false;
+      console.error('Failed to load featured products', error);
+    }).finally(() => setFeaturedLoading(false));
+  }, []);
+
   const loading = productId
     ? resolvedProduct !== productId && !products.some(p => matchesProduct(p, productId))
     : catalogLoading;
   const productError = Boolean(productId && failedProduct === productId);
-  const value = useMemo(() => ({ products, storeSettings, loading, productError,
-    fetchProducts, setProducts, setStoreSettings }),
-    [products, storeSettings, loading, productError, fetchProducts]);
+  const value = useMemo(() => ({ products, featuredProducts, featuredLoading, storeSettings, loading, productError,
+    fetchProducts, fetchFeaturedProducts, setProducts, setStoreSettings }),
+    [products, featuredProducts, featuredLoading, storeSettings, loading, productError, fetchProducts, fetchFeaturedProducts]);
   return <ProductContext.Provider value={value}>{children}</ProductContext.Provider>;
 }
 

@@ -43,12 +43,15 @@ async function setup(viewport, holdHero = false) {
       await new Promise(resolve=>setTimeout(resolve,500));
       return route.continue();
     }
-    if(pathname==='/api/products') {
+    if(pathname==='/api/products/featured') {
       const collection=page.locator('[data-preload-distance="1200"]');
       if(await collection.count()) collectionLoads.push(await collection.evaluate(el=>({
         distance:el.getBoundingClientRect().top-window.innerHeight,
         hasCards:!!el.querySelector('img'),
       })));
+      return json({success:true,products:['argan','jojoba','rose','almond','coconut','olive'].map(product)});
+    }
+    if(pathname==='/api/products') {
       return json({success:true,products:['argan','jojoba','rose','almond','coconut','olive'].map(product),storeSettings:{enableEn:true,enableAr:true}});
     }
     if(pathname.endsWith('/data')) return json({success:true,data:{}});
@@ -77,16 +80,17 @@ try {
     await page.goto(base+'/',{waitUntil:'domcontentloaded'});
     await page.locator('[data-deferred-section="ready"]').first().waitFor();
     await page.waitForTimeout(800);
-    assert.ok(!requests.includes('/api/products'),'home downloaded catalog before collection');
-    assert.ok(!requests.includes('/api/reviews/summary'));
+    assert.ok(requests.includes('/api/products/featured'),'Home did not request featured products while the hero was loading');
+    assert.ok(!requests.includes('/api/products'),'Home downloaded the full catalog for the carousel');
+    const imagesWarmed = Promise.all(['argan','jojoba','rose','almond'].map(id=>
+      page.waitForRequest(request=>new URL(request.url()).pathname===`/${id}.svg`)));
+    await imagesWarmed;
+    assert.ok(requests.includes('/api/reviews/summary'));
     assert.ok(!requests.includes('/api/live-packs'));
     assert.ok(!requests.some(url=>url.includes('/assets/ProductDetail-')));
     assert.ok(await page.locator('[data-deferred-section="waiting"]').count()>0);
     assert.equal(await page.locator('img[fetchpriority="high"]').first().getAttribute('src'),'/fixture.svg');
-    const imagesWarmed = Promise.all(['argan','jojoba','rose','almond'].map(id=>
-      page.waitForRequest(request=>new URL(request.url()).pathname===`/${id}.svg`)));
     releaseHero();
-    await imagesWarmed;
     assert.equal(await page.evaluate(()=>window.scrollY),0);
     assert.equal(await page.locator('[data-preload-distance="1200"]').getAttribute('data-deferred-section'),'waiting');
     assert.ok(!requests.includes('/coconut.svg'),'distant carousel images must remain lazy');
@@ -94,16 +98,17 @@ try {
       await page.evaluate(()=>window.scrollBy(0,600));
       await page.waitForTimeout(150);
     }
-    assert.ok(requests.includes('/api/products'),'collection did not request catalog on approach');
+    assert.ok(!requests.includes('/api/products'),'collection requested the full catalog');
     assert.ok(requests.includes('/api/live-packs'),'live section did not request packs on approach');
     assert.ok(collectionLoads[0].distance > 300, 'collection must start earlier than the old 300px threshold');
     assert.equal(collectionLoads[0].hasCards,false,'data request starts without waiting for the delayed collection chunk');
     const collection=page.locator('[data-preload-distance="1200"]');
-    assert.equal(await collection.locator('img[loading="eager"][fetchpriority="auto"]').count(),4);
-    assert.equal(await collection.locator('img[loading="lazy"][fetchpriority="low"]').count(),2);
+    assert.equal(await collection.locator('img[loading="eager"][fetchpriority="high"]').count(),1);
+    assert.equal(await collection.locator('img[loading="eager"][fetchpriority="auto"]').count(),1);
+    assert.equal(await collection.locator('img[loading="lazy"][fetchpriority="low"]').count(),3);
     assert.equal(await collection.locator('img').first().evaluate(el=>getComputedStyle(el.closest('.snap-center')).opacity),'1');
     assert.deepEqual(errors,[]);
-    results.push(`PASS home ${viewport.width}px: hero first; first 4 product images requested before scrolling; early collection activation; remaining images and live section stay lazy; no hidden card animation`);
+    results.push(`PASS home ${viewport.width}px: featured data and first 4 product images start before hero release/scroll; no full catalog; remaining images and live section stay lazy; no hidden card animation`);
     await context.close();
   }
   const {context,page,requests,errors}=await setup({width:390,height:844});
