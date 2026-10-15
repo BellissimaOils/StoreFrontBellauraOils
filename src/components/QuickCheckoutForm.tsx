@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { CreditCard, Loader2, CheckCircle2 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import { tracker } from '../lib/tracker';
 
 export default function QuickCheckoutForm({ product, qty }: { product: any, qty: number }) {
   const { t, language } = useLanguage();
@@ -45,7 +46,26 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
       .catch(err => console.error('Failed to fetch cities', err));
   }, []);
 
+  const [showForm, setShowForm] = useState(false);
+  const attemptKeyRef = React.useRef<string | null>(null);
+  const hasTriggeredFormStartRef = React.useRef(false);
+  const safeQty = Math.max(1, Math.min(7, Math.round(qty || 1)));
+
+  const triggerFormStart = () => {
+    if (!hasTriggeredFormStartRef.current) {
+      hasTriggeredFormStartRef.current = true;
+      tracker.track('checkout_form_start', {
+        productId: product?.id || product?.product_nbr || '',
+        quantity: safeQty,
+        metadata: {
+          itemCount: 1,
+        },
+      });
+    }
+  };
+
   const handleCityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    triggerFormStart();
     const cityName = e.target.value;
     setFormData({ ...formData, city: cityName });
     const selectedCity = cities.find(c => c.name === cityName);
@@ -54,15 +74,26 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
     }
   };
 
+  const handleInputChange = (field: string, value: string) => {
+    triggerFormStart();
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.fullName || !formData.phone || !formData.city || !formData.address) {
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'validation' },
+      });
       setError(isAr ? 'المرجوا ملء جميع الحقول' : 'Please fill all fields');
       return;
     }
 
     const trimmedAddress = (formData.address || '').trim();
     if (trimmedAddress.length < 20) {
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'validation' },
+      });
       setError(
         isAr
           ? 'يرجى كتابة عنوان مفصل (20 حرفاً على الأقل) لضمان دقة التوصيل.'
@@ -73,18 +104,36 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
     
     setError('');
     setIsSubmitting(true);
+
+    if (!attemptKeyRef.current) {
+      attemptKeyRef.current = `chk_quick_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    }
+
+    const productPrice = getCleanPrice(product.price);
+    const subtotal = productPrice * safeQty;
+    const total = subtotal + shippingCost;
+
+    tracker.track('checkout_submit', {
+      productId: product?.id || product?.product_nbr || '',
+      quantity: safeQty,
+      metadata: {
+        itemCount: 1,
+        totalMad: total,
+      },
+    });
     
     try {
-      const productPrice = getCleanPrice(product.price);
-      const subtotal = productPrice * qty;
-      const total = subtotal + shippingCost;
-      
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          idempotencyKey: attemptKeyRef.current,
+          visitorId: localStorage.getItem('bellaura_visitor_id') || undefined,
+          sessionId: localStorage.getItem('bellaura_session_id') || undefined,
+          source: localStorage.getItem('bellaura_session_source') || undefined,
+          utmCampaign: localStorage.getItem('bellaura_utm_campaign') || undefined,
           customer: {
             ...formData,
             address: trimmedAddress,
@@ -94,23 +143,47 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
             id: product.id || product.product_nbr,
             name: product.name,
             price: product.price,
-            quantity: qty,
+            quantity: safeQty,
             image: product.image
           }],
           shippingCost,
-          total: total,
+          total: `${total} DH`,
           discountValue: 0
         }),
       });
       
       const data = await response.json();
-      if (data.success) {
+      if (response.ok && (data.success || data.orderNbr)) {
+        attemptKeyRef.current = null;
+        const orderNbr = data.orderNbr || '';
+        tracker.track('order_confirmed', {
+          productId: orderNbr,
+          quantity: safeQty,
+          metadata: {
+            orderNbr,
+            totalMad: total,
+          },
+        });
+        tracker.flush();
         setIsSuccess(true);
         clearCart();
       } else {
-        setError(data.message || (isAr ? 'حدث خطأ أثناء معالجة الطلب' : 'Failed to process order'));
+        const errorMsg = data.message || (isAr ? 'حدث خطأ أثناء معالجة الطلب' : 'Failed to process order');
+        let reason: 'rate_limit' | 'captcha' | 'unavailable_product' | 'unavailable_pack' | 'validation' | 'server_error' = 'server_error';
+        const msgLow = (errorMsg || '').toLowerCase();
+        if (response.status === 429 || msgLow.includes('slow down')) reason = 'rate_limit';
+        else if (response.status === 400 || msgLow.includes('quantity')) reason = 'validation';
+        else if (msgLow.includes('not available')) reason = 'unavailable_product';
+
+        tracker.track('checkout_submit_failed', {
+          metadata: { reason },
+        });
+        setError(errorMsg);
       }
     } catch (err) {
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'server_error' },
+      });
       setError(isAr ? 'حدث خطأ في الاتصال' : 'Connection error');
     } finally {
       setIsSubmitting(false);
@@ -155,7 +228,7 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
             type="text"
             required
             value={formData.fullName}
-            onChange={e => setFormData({...formData, fullName: e.target.value})}
+            onChange={e => handleInputChange('fullName', e.target.value)}
             className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2c5836]/50 transition-all text-sm"
             placeholder={isAr ? 'الاسم الكامل' : 'Full Name'}
           />
@@ -170,7 +243,7 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
             required
             dir="ltr"
             value={formData.phone}
-            onChange={e => setFormData({...formData, phone: e.target.value})}
+            onChange={e => handleInputChange('phone', e.target.value)}
             className={`w-full px-4 py-3 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2c5836]/50 transition-all text-sm ${isAr ? 'text-right' : 'text-left'}`}
             placeholder="06 XX XX XX XX"
           />
@@ -210,7 +283,7 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
             required
             rows={2}
             value={formData.address}
-            onChange={e => setFormData({...formData, address: e.target.value})}
+            onChange={e => handleInputChange('address', e.target.value)}
             className={`w-full px-4 py-3 bg-white border rounded-lg focus:outline-none focus:ring-2 transition-all text-sm resize-none ${
               formData.address.trim().length > 0 && formData.address.trim().length < 20
                 ? 'border-amber-400 focus:ring-amber-400/50'

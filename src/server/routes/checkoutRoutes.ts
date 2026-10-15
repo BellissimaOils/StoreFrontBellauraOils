@@ -124,9 +124,23 @@ export function createCheckoutRouter(state: CheckoutState) {
       subtotalPrice,
     } = req.body;
 
-    // Idempotency: synchronously check and reserve the attempt key BEFORE any async operations start.
+    // Strict idempotency key validation (8-128 chars, safe alphanumeric and symbols)
+    const IDEMPOTENCY_KEY_REGEX = /^[A-Za-z0-9_\-.:]{8,128}$/;
+    const rawKey = req.body.idempotencyKey;
+    let effectiveKey = "";
+    if (rawKey !== undefined && rawKey !== null && String(rawKey).trim() !== "") {
+      const trimmedKey = String(rawKey).trim();
+      if (!IDEMPOTENCY_KEY_REGEX.test(trimmedKey)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid idempotency key format. Must be 8-128 alphanumeric, dash, underscore, colon, or dot characters.",
+        });
+      }
+      effectiveKey = trimmedKey;
+    }
+
+    // 1. In-memory fast path check
     cleanupIdempotencyCache();
-    const effectiveKey = idempotencyKey ? String(idempotencyKey).trim() : "";
     if (effectiveKey) {
       const existing = idempotencyCache.get(effectiveKey);
       if (existing) {
@@ -160,10 +174,24 @@ export function createCheckoutRouter(state: CheckoutState) {
       }
     };
 
-    // Cloudflare Turnstile Verification (Only on final COD order creation)
+    // 2. Production Fail-Closed Cloudflare Turnstile Verification
+    const isProduction = process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
     const turnstileToken = req.body.turnstileToken ? String(req.body.turnstileToken).trim() : "";
     const turnstileSecret = process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY;
-    if (turnstileSecret) {
+
+    if (isProduction && !turnstileSecret) {
+      console.error(
+        "[Turnstile] Server configuration error: CLOUDFLARE_TURNSTILE_SECRET_KEY is missing in production environment. Failing closed.",
+      );
+      releasePendingKey();
+      return res.status(500).json({
+        success: false,
+        message: "Security verification service is misconfigured on the server. Please contact support.",
+        messageAr: "خدمة التحقق الأمني غير مهيأة بشكل صحيح. يرجى الاتصال بالدعم الفني.",
+      });
+    }
+
+    if (turnstileSecret || isProduction) {
       if (!turnstileToken) {
         releasePendingKey();
         return res.status(403).json({
@@ -178,7 +206,7 @@ export function createCheckoutRouter(state: CheckoutState) {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({
-            secret: turnstileSecret,
+            secret: turnstileSecret!,
             response: turnstileToken,
           }),
         });
@@ -200,9 +228,13 @@ export function createCheckoutRouter(state: CheckoutState) {
           message: "Security verification unavailable. Please try again in a moment.",
         });
       }
+    } else {
+      console.warn(
+        "[Turnstile] Development environment: CLOUDFLARE_TURNSTILE_SECRET_KEY not set. Bypassing verification for local development only.",
+      );
     }
 
-    // Persistent Idempotency Check in Cloudflare D1 (survives cold starts & multi-instances)
+    // 3. Durable Idempotency Check in Cloudflare D1 (survives cold starts, instance restarts & multi-instances)
     if (effectiveKey) {
       const rawAccountId = process.env.CLOUDFLARE_D1_ACCOUNT_ID;
       const rawDatabaseId = process.env.CLOUDFLARE_D1_DATABASE_ID;
@@ -279,6 +311,7 @@ export function createCheckoutRouter(state: CheckoutState) {
       });
     }
 
+    const productQuantities = new Map<string, number>();
     for (const it of items) {
       if (!it || typeof it !== "object" || Array.isArray(it)) {
         releasePendingKey();
@@ -288,11 +321,12 @@ export function createCheckoutRouter(state: CheckoutState) {
         });
       }
       const rawQty = Number(it.quantity);
-      if (!Number.isInteger(rawQty) || rawQty < 1 || rawQty > 20) {
+      if (!Number.isInteger(rawQty) || rawQty < 1 || rawQty > 7) {
         releasePendingKey();
         return res.status(400).json({
           success: false,
-          message: "Item quantity must be a positive integer between 1 and 20.",
+          message: "Item quantity must be between 1 and 7 per product.",
+          messageAr: "الكمية المسموح بها لكل منتج هي بين 1 و 7 قطع كحد أقصى.",
         });
       }
       if (typeof it.id !== "string" && typeof it.id !== "number") {
@@ -309,6 +343,17 @@ export function createCheckoutRouter(state: CheckoutState) {
           message: "Item identifier exceeds maximum allowable length.",
         });
       }
+      const prodKey = String(it.id || it.product_nbr);
+      const currentTotal = (productQuantities.get(prodKey) || 0) + rawQty;
+      if (currentTotal > 7) {
+        releasePendingKey();
+        return res.status(400).json({
+          success: false,
+          message: "Maximum allowable quantity is 7 per product type.",
+          messageAr: "الحد الأقصى المسموح به هو 7 قطع من نفس المنتج.",
+        });
+      }
+      productQuantities.set(prodKey, currentTotal);
     }
 
     // Strict customer text field bounds
@@ -448,7 +493,8 @@ export function createCheckoutRouter(state: CheckoutState) {
     const unresolvedItems: string[] = [];
     const rawValidatedItems = await Promise.all(
       (Array.isArray(items) ? items : []).map(async (item: any) => {
-        const quantity = Math.max(1, parseInt(String(item.quantity || 1), 10));
+        const rawQuantity = parseInt(String(item.quantity || 1), 10);
+        const quantity = Math.max(1, Math.min(7, Number.isInteger(rawQuantity) ? rawQuantity : 1));
         const isPack = item?.isLivePack || item?.livePackId || String(item?.id || "").startsWith("live_pack_");
 
         if (isPack) {
@@ -508,27 +554,47 @@ export function createCheckoutRouter(state: CheckoutState) {
         );
 
         let itemPrice = 0;
+        let resolvedItemName = item.name || item.product_name;
+
         if (match) {
-          const rawPriceStr = typeof match.price === "string" ? match.price.replace(/[^\d.]/g, "") : String(match.price);
-          itemPrice = parseFloat(rawPriceStr) || 0;
+          resolvedItemName = match.name_ar || match.name || resolvedItemName;
+
+          // Check if variant size was selected and match authoritative variant price
+          let matchedVariantPrice: number | null = null;
+          const selectedSize = item.selectedSize?.size || item.size;
+          if (selectedSize && Array.isArray(match.sizes) && match.sizes.length > 0) {
+            const sizeObj = match.sizes.find(
+              (s: any) => String(s.size).trim().toLowerCase() === String(selectedSize).trim().toLowerCase()
+            );
+            if (sizeObj && sizeObj.price) {
+              const parsedVPrice = parseFloat(String(sizeObj.price).replace(/[^\d.]/g, ""));
+              if (Number.isFinite(parsedVPrice) && parsedVPrice > 0) {
+                matchedVariantPrice = parsedVPrice;
+                resolvedItemName = `${resolvedItemName} (${selectedSize})`;
+              }
+            }
+          }
+
+          if (matchedVariantPrice !== null) {
+            itemPrice = matchedVariantPrice;
+          } else {
+            const rawPriceStr = typeof match.price === "string" ? match.price.replace(/[^\d.]/g, "") : String(match.price);
+            itemPrice = parseFloat(rawPriceStr) || 0;
+          }
         } else if (!catalogAvailable && ALLOW_UNVERIFIED_PRICES) {
-          // Opt-in outage path, OFF by default. See the constant's comment: this
-          // accepts a price the customer's own browser supplied, so it is only
-          // reachable when an operator has explicitly decided that taking orders
-          // during a catalogue outage matters more than pricing them correctly.
+          // Opt-in outage path, OFF by default.
           itemPrice = parseFloat(String(item.price).replace(/[^\d.]/g, "")) || 0;
           console.error(
             `[Checkout][UNVERIFIED PRICE] Product catalog unavailable — accepting client-supplied price ${itemPrice} for "${item.name || item.product_name || item.id}". Verify this order manually before dispatching.`,
           );
         } else {
-          // We have a real catalog and this item isn't in it — do not invent a
-          // price and do not trust the client's. Collect it and reject below.
           unresolvedItems.push(String(item.name || item.product_name || item.id || "unknown item"));
         }
 
         computedSubtotal += itemPrice * quantity;
         return {
           ...item,
+          name: resolvedItemName,
           price: `${itemPrice} DH`,
           quantity,
         };
@@ -716,10 +782,10 @@ export function createCheckoutRouter(state: CheckoutState) {
           parseFloat(String(newOrder.discountAmount).replace(/[^\d.]/g, "")) ||
           0;
 
-        // status ('pending') is fixed for a new order. 15 placeholders across 16 columns.
+        // status ('pending') is fixed for a new order. 16 placeholders across 17 columns.
         const orderInsertSql = `INSERT INTO orders (
-          id, order_nbr, first_name, last_name, phone, address, city, zip, total, subtotal, discount_amount, coupon_applied, status, comment, created_at, idempotency_key
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?);`;
+          id, order_nbr, first_name, last_name, phone, address, city, zip, total, subtotal, discount_amount, coupon_applied, status, comment, created_at, idempotency_key, status_updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?);`;
         const orderInsertParams = [
           newOrder.id,
           newOrder.orderNbr,
@@ -736,6 +802,7 @@ export function createCheckoutRouter(state: CheckoutState) {
           newOrder.comment || "",
           orderCreatedDateObj,
           effectiveKey || null,
+          orderCreatedDateObj,
         ];
 
         // This result was previously ignored, and the "successfully
@@ -749,6 +816,59 @@ export function createCheckoutRouter(state: CheckoutState) {
         // reported as a success.
         const orderPropagated = await state.executeD1Query(orderInsertSql, orderInsertParams);
         if (!orderPropagated) {
+          const lastErr = (state.getLastD1WriteError?.() || "").toLowerCase();
+          if (
+            effectiveKey &&
+            (lastErr.includes("unique") || lastErr.includes("idempotency_key") || lastErr.includes("constraint"))
+          ) {
+            console.warn(
+              `[D1 Idempotency Collision] Duplicate submission detected via UNIQUE constraint on key ${effectiveKey}. Fetching original order.`,
+            );
+            // Roll back the duplicate from in-memory orders
+            const dupIdx = orders.findIndex((o: any) => o.id === newOrder.id);
+            if (dupIdx !== -1) {
+              orders.splice(dupIdx, 1);
+              await state.saveDb();
+            }
+
+            // Query D1 for the winning order
+            try {
+              const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
+              const checkRes = await fetch(cfUrl, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${apiToken}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  sql: "SELECT id, order_nbr, total FROM orders WHERE idempotency_key = ? LIMIT 1;",
+                  params: [effectiveKey],
+                }),
+              });
+              if (checkRes.ok) {
+                const checkData = await checkRes.json();
+                const rows = checkData.result?.[0]?.results || [];
+                if (Array.isArray(rows) && rows.length > 0) {
+                  const winnerOrder = rows[0];
+                  const winnerResponse = {
+                    success: true,
+                    message: "Order placed successfully (restored from idempotent attempt).",
+                    reviewLink: "/leave-a-review",
+                    orderNbr: winnerOrder.order_nbr,
+                  };
+                  idempotencyCache.set(effectiveKey, {
+                    timestamp: Date.now(),
+                    status: "completed",
+                    response: winnerResponse,
+                  });
+                  return res.status(200).json(winnerResponse);
+                }
+              }
+            } catch (e) {
+              console.error("[D1 Idempotency Collision Fetch Error]", e);
+            }
+          }
+
           console.error(
             `[Checkout D1 Sync][CRITICAL] Order ${orderNbr} was NOT written to D1: ${state.getLastD1WriteError?.() || "unknown error"}. ` +
               `The customer's checkout succeeded and the order is in local state, but it will NOT appear in the admin orders list until it is re-synced. Reconcile this order manually.`,
@@ -820,16 +940,19 @@ export function createCheckoutRouter(state: CheckoutState) {
 
           const numericItemPrice =
             parseFloat(String(item.price).replace(/[^\d.]/g, "")) || 0;
+          const itemQuantity = Math.max(1, Math.min(7, parseInt(String(item.quantity), 10) || 1));
+          const lineTotal = Math.round(numericItemPrice * itemQuantity * 100) / 100;
 
           const itemInsertSql = `INSERT INTO order_items (
-            order_nbr, product_nbr, product_name, quantity, price
-          ) VALUES (?, ?, ?, ?, ?);`;
+            order_nbr, product_nbr, product_name, quantity, price, line_total
+          ) VALUES (?, ?, ?, ?, ?, ?);`;
           const itemOk = await state.executeD1Query(itemInsertSql, [
             newOrder.orderNbr,
             itemProductNbr,
             itemName,
-            parseInt(item.quantity, 10) || 1,
+            itemQuantity,
             numericItemPrice,
+            lineTotal,
           ]);
           if (!itemOk) {
             failedItemInserts.push(String(itemName || "unknown item"));

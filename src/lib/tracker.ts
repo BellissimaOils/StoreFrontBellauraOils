@@ -18,7 +18,14 @@ export type AnalyticsEventType =
   | 'remove_from_cart'
   | 'cart_view'
   | 'checkout_start'
-  | 'purchase_complete';
+  | 'checkout_form_start'
+  | 'checkout_submit'
+  | 'checkout_submit_failed'
+  | 'order_confirmed'
+  | 'purchase_complete'
+  | 'search'
+  | 'scroll'
+  | 'time_on_page';
 
 export interface TrackingEventPayload {
   eventName: AnalyticsEventType;
@@ -286,6 +293,14 @@ class StorefrontTracker {
   private setupUnloadListeners(): void {
     const handleExit = () => {
       this.touchSessionActivity();
+      const activeMs = this.getAndResetActiveDuration();
+      if (activeMs >= 500) {
+        this.track('time_on_page', {
+          path: window.location.pathname,
+          activeDurationMs: activeMs,
+          metadata: { seconds: Math.round(activeMs / 1000) },
+        });
+      }
       this.flush(true);
     };
 
@@ -313,6 +328,16 @@ class StorefrontTracker {
     return duration;
   }
 
+  public trackSearch(query: string, path?: string): void {
+    if (!query || typeof query !== 'string') return;
+    const cleanQuery = query.trim().replace(/[\u0000-\u001f]/g, '').substring(0, 80);
+    if (!cleanQuery) return;
+    this.track('search', {
+      path: path || window.location.pathname,
+      metadata: { query: cleanQuery },
+    });
+  }
+
   public track(eventName: AnalyticsEventType, data: Omit<TrackingEventPayload, 'eventName'> = {}): void {
     try {
       this.touchSessionActivity();
@@ -334,7 +359,14 @@ class StorefrontTracker {
       this.eventQueue.push(eventItem);
 
       // Immediate flush on important journey moments or when batch reaches threshold
-      const isUrgent = eventName === 'checkout_start' || eventName === 'purchase_complete' || this.eventQueue.length >= MAX_BATCH_SIZE;
+      const isUrgent =
+        eventName === 'checkout_start' ||
+        eventName === 'checkout_form_start' ||
+        eventName === 'checkout_submit' ||
+        eventName === 'checkout_submit_failed' ||
+        eventName === 'order_confirmed' ||
+        eventName === 'purchase_complete' ||
+        this.eventQueue.length >= MAX_BATCH_SIZE;
       if (isUrgent) {
         this.flush();
       }

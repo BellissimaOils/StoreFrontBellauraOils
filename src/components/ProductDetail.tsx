@@ -798,9 +798,14 @@ export default function ProductDetail() {
                 </span>
                 <button 
                   type="button"
-                  onClick={() => setQty(prev => prev + 1)}
-                  className="w-10 h-10 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-800 transition-colors cursor-pointer"
-                  title="Increase volume quantity"
+                  onClick={() => setQty(prev => Math.min(7, prev + 1))}
+                  disabled={qty >= 7}
+                  className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
+                    qty >= 7
+                      ? "opacity-30 cursor-not-allowed text-gray-300"
+                      : "text-gray-400 hover:bg-gray-100 hover:text-gray-800 cursor-pointer"
+                  }`}
+                  title={qty >= 7 ? "الحد الأقصى هو 7 قطع" : "Increase volume quantity"}
                 >
                   <Plus className="w-4 h-4" />
                 </button>

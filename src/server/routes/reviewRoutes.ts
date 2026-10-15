@@ -642,7 +642,7 @@ export function createReviewRouter(state: ReviewsState) {
         const currentStatus = String(matchedOrder.status || "pending").toLowerCase();
         if (currentStatus === "pending" || currentStatus === "opened") {
           matchedOrder.status = "confirmed";
-          d1OrderSql = `UPDATE orders SET status = 'confirmed' WHERE id = ?;`;
+          d1OrderSql = `UPDATE orders SET status = 'confirmed', status_updated_at = CURRENT_TIMESTAMP WHERE id = ?;`;
           d1OrderParams = [matchedOrder.id];
         }
       }

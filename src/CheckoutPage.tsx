@@ -527,14 +527,30 @@ ${t('cart.total')}: ${total} ${shippingLabel}
     window.open(`https://wa.me/212677343386?text=${encodeURIComponent(summary)}`, '_blank');
   };
 
+  const attemptKeyRef = React.useRef<string | null>(null);
+  const hasTriggeredFormStartRef = React.useRef(false);
+
+  const triggerFormStart = () => {
+    if (!hasTriggeredFormStartRef.current) {
+      hasTriggeredFormStartRef.current = true;
+      tracker.track('checkout_form_start', {
+        quantity: cart.length,
+        unitPrice: checkoutTotalNumeric,
+        metadata: {
+          itemCount: cart.length,
+          totalMad: checkoutTotalNumeric,
+        },
+      });
+    }
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    triggerFormStart();
     setFormData({ ...formData, [e.target.name]: e.target.value });
     if (e.target.name === 'address' && e.target.value.trim().length >= 20) {
       setAddressError(null);
     }
   };
-
-  const attemptKeyRef = React.useRef<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -542,6 +558,9 @@ ${t('cart.total')}: ${total} ${shippingLabel}
 
     const trimmedAddress = (formData.address || '').trim();
     if (trimmedAddress.length < 20) {
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'validation' },
+      });
       setAddressError(
         language === 'ar'
           ? 'يرجى كتابة عنوان مفصل لا يقل عن 20 حرفاً لضمان وصول الشحنة بدقة.'
@@ -559,6 +578,9 @@ ${t('cart.total')}: ${total} ${shippingLabel}
     setAddressError(null);
 
     if (turnstileSiteKey && !turnstileToken) {
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'captcha' },
+      });
       setTurnstileError(true);
       return;
     }
@@ -566,6 +588,16 @@ ${t('cart.total')}: ${total} ${shippingLabel}
 
     setIsLoading(true);
     setError(null);
+
+    // Track checkout submit attempt (non-PII)
+    tracker.track('checkout_submit', {
+      quantity: cart.length,
+      unitPrice: checkoutTotalNumeric,
+      metadata: {
+        itemCount: cart.length,
+        totalMad: checkoutTotalNumeric,
+      },
+    });
 
     // Create a stable idempotency key for this checkout submission attempt
     if (!attemptKeyRef.current) {
@@ -626,7 +658,17 @@ ${t('cart.total')}: ${total} ${shippingLabel}
             currency: "MAD",
             content_name: orderNbr || "",
           });
-          // First-party tracker purchase_complete
+          // Core normalized event: order_confirmed
+          tracker.track('order_confirmed', {
+            productId: orderNbr || '',
+            unitPrice: checkoutTotalNumeric,
+            quantity: cart.length,
+            metadata: {
+              orderNbr,
+              totalMad: checkoutTotalNumeric,
+            },
+          });
+          // First-party tracker purchase_complete for backwards compatibility
           tracker.track('purchase_complete', {
             productId: orderNbr || '',
             unitPrice: checkoutTotalNumeric,
@@ -643,13 +685,7 @@ ${t('cart.total')}: ${total} ${shippingLabel}
           window.scrollTo(0, 0);
         }, 2000);
       } else {
-        // Surface the server's specific reason when it sends one. The backend
-        // rejects a checkout with a clear, actionable message in cases the
-        // customer can fix themselves — e.g. an item that no longer exists in
-        // the catalog because it was deleted while it sat in their saved cart
-        // ("Some items in your cart are no longer available: X. Please refresh
-        // the page and try again."). Collapsing that into a generic
-        // "an error occurred" left them stuck with no idea what to do.
+        // Surface the server's specific reason when it sends one.
         let serverMessage = '';
         try {
           const errData = await response.json();
@@ -659,11 +695,33 @@ ${t('cart.total')}: ${total} ${shippingLabel}
         } catch {
           // Non-JSON error body — fall back to the generic message below.
         }
+
+        let failureReason: 'rate_limit' | 'captcha' | 'unavailable_product' | 'unavailable_pack' | 'validation' | 'server_error' = 'server_error';
+        const msgLow = serverMessage.toLowerCase();
+        if (response.status === 429 || msgLow.includes('too many') || msgLow.includes('slow down')) {
+          failureReason = 'rate_limit';
+        } else if (msgLow.includes('turnstile') || msgLow.includes('captcha')) {
+          failureReason = 'captcha';
+        } else if (msgLow.includes('live pack') || msgLow.includes('pack')) {
+          failureReason = 'unavailable_pack';
+        } else if (msgLow.includes('no longer available') || msgLow.includes('catalog') || msgLow.includes('not found')) {
+          failureReason = 'unavailable_product';
+        } else if (response.status === 400 || msgLow.includes('quantity') || msgLow.includes('invalid')) {
+          failureReason = 'validation';
+        }
+
+        tracker.track('checkout_submit_failed', {
+          metadata: { reason: failureReason },
+        });
+
         setError(serverMessage || t('checkout.errorOccurred'));
         setIsLoading(false);
       }
     } catch (error) {
       console.error('Checkout error:', error);
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'server_error' },
+      });
       setError(t('checkout.errorOccurred'));
       setIsLoading(false);
     }

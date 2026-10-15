@@ -153,11 +153,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ? `${product.id}__size_${product.selectedSize.size}`
       : product.id;
 
+    const safeQty = Math.max(1, Math.min(7, qty));
     const numericPrice = parseFloat(String(product.price || 0).replace(/[^\d.]/g, '')) || 0;
     tracker.track('add_to_cart', {
       productId: String(product.id),
       productName: product.name,
-      quantity: qty,
+      quantity: safeQty,
       unitPrice: numericPrice,
     });
 
@@ -166,24 +167,26 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         (item.cartItemId || (item.selectedSize?.size ? `${item.id}__size_${item.selectedSize.size}` : item.id)) === itemCartKey
       );
       if (existingItem) {
+        const cappedQty = Math.min(7, existingItem.quantity + safeQty);
         return prevCart.map(item =>
           (item.cartItemId || (item.selectedSize?.size ? `${item.id}__size_${item.selectedSize.size}` : item.id)) === itemCartKey
-            ? { ...item, quantity: item.quantity + qty }
+            ? { ...item, quantity: cappedQty }
             : item
         );
       }
-      return [...prevCart, { ...product, cartItemId: itemCartKey, quantity: qty }];
+      return [...prevCart, { ...product, cartItemId: itemCartKey, quantity: safeQty }];
     });
   }, []);
 
   const addLivePackToCart = useCallback((pack: LivePack, qty: number = 1) => {
     const livePackCartId = `live_pack_${pack.id}`;
     const repImage = pack.products?.[0]?.image || "";
+    const safeQty = Math.max(1, Math.min(7, qty));
 
     tracker.track('add_to_cart', {
       productId: livePackCartId,
       productName: pack.name,
-      quantity: qty,
+      quantity: safeQty,
       unitPrice: pack.live_price,
     });
 
@@ -196,7 +199,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isSale: pack.regular_price > pack.live_price,
       image: repImage,
       description: pack.description || "",
-      quantity: qty,
+      quantity: safeQty,
       isLivePack: true,
       livePackId: pack.id,
       includedProducts: (pack.products || []).map((p) => ({
@@ -213,8 +216,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.id === livePackCartId);
       if (existingItem) {
+        const cappedQty = Math.min(7, existingItem.quantity + safeQty);
         return prevCart.map(item =>
-          item.id === livePackCartId ? { ...item, quantity: item.quantity + qty } : item
+          item.id === livePackCartId ? { ...item, quantity: cappedQty } : item
         );
       }
       return [...prevCart, packItem];
@@ -245,10 +249,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }));
       return;
     }
+    const safeQty = Math.max(1, Math.min(7, quantity));
     setCart(prevCart =>
       prevCart.map(item => {
         const k = item.cartItemId || (item.selectedSize?.size ? `${item.id}__size_${item.selectedSize.size}` : item.id);
-        return (k === itemKey || item.id === itemKey) ? { ...item, quantity } : item;
+        return (k === itemKey || item.id === itemKey) ? { ...item, quantity: safeQty } : item;
       })
     );
   }, []);

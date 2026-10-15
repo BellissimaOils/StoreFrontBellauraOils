@@ -343,14 +343,21 @@ export default function CartOverlay({ isOpen, onClose }: CartOverlayProps) {
                         <div className="flex items-center gap-3 border border-primary-earth/10 px-2 py-1 rounded bg-white flex-shrink-0">
                           <button 
                             onClick={() => updateQuantity(itemKey, item.quantity - 1)}
-                            className="p-0.5 hover:text-accent-gold transition-colors text-primary-earth/60"
+                            className="p-0.5 hover:text-accent-gold transition-colors text-primary-earth/60 cursor-pointer"
+                            title="Decrease quantity"
                           >
                             <Minus className="w-3 h-3" />
                           </button>
                           <span className="text-sm w-4 text-center font-semibold text-primary-earth">{item.quantity}</span>
                           <button 
-                            onClick={() => updateQuantity(itemKey, item.quantity + 1)}
-                            className="p-0.5 hover:text-accent-gold transition-colors text-primary-earth/60"
+                            onClick={() => updateQuantity(itemKey, Math.min(7, item.quantity + 1))}
+                            disabled={item.quantity >= 7}
+                            className={`p-0.5 transition-colors ${
+                              item.quantity >= 7
+                                ? "opacity-30 cursor-not-allowed text-primary-earth/30"
+                                : "hover:text-accent-gold text-primary-earth/60 cursor-pointer"
+                            }`}
+                            title={item.quantity >= 7 ? "Maximum quantity is 7" : "Increase quantity"}
                           >
                             <Plus className="w-3 h-3" />
                           </button>

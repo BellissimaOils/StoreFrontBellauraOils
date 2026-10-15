@@ -1088,6 +1088,8 @@ export async function ensureD1OrdersTablesExist(
       comment TEXT,
       shipping_tracking TEXT,
       dispatched_nbr TEXT,
+      idempotency_key TEXT UNIQUE,
+      status_updated_at TEXT,
       created_at TEXT NOT NULL
     );`;
 
@@ -1191,6 +1193,7 @@ export async function ensureD1OrdersTablesExist(
       product_name TEXT,
       quantity INTEGER,
       price REAL,
+      line_total REAL,
       FOREIGN KEY (order_nbr) REFERENCES orders (order_nbr) ON DELETE CASCADE
     );`;
 
@@ -1202,6 +1205,34 @@ export async function ensureD1OrdersTablesExist(
       },
       body: JSON.stringify({ sql: createItemsSql }),
     });
+
+    // Safely add line_total to existing order_items table
+    try {
+      await fetch(cloudflareUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sql: "ALTER TABLE order_items ADD COLUMN line_total REAL;",
+        }),
+      });
+    } catch (e) {}
+
+    // Safely add status_updated_at to existing orders table
+    try {
+      await fetch(cloudflareUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sql: "ALTER TABLE orders ADD COLUMN status_updated_at TEXT;",
+        }),
+      });
+    } catch (e) {}
 
     const createReviewsSql = `CREATE TABLE IF NOT EXISTS reviews (
       id TEXT PRIMARY KEY,
@@ -1236,6 +1267,16 @@ export async function ensureD1OrdersTablesExist(
         },
         body: JSON.stringify({
           sql: "CREATE INDEX IF NOT EXISTS idx_order_items_order_nbr ON order_items (order_nbr);",
+        }),
+      });
+      await fetch(cloudflareUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sql: "CREATE INDEX IF NOT EXISTS idx_order_items_product_nbr ON order_items (product_nbr);",
         }),
       });
       await fetch(cloudflareUrl, {
@@ -1940,6 +1981,8 @@ export async function ensureD1AnalyticsTablesExist(): Promise<boolean> {
       utm_term TEXT,
       country TEXT,
       city TEXT,
+      traffic_type TEXT DEFAULT 'human',
+      bot_name TEXT,
       started_at TEXT NOT NULL,
       ended_at TEXT,
       duration_seconds INTEGER DEFAULT 0,
@@ -1978,12 +2021,15 @@ export async function ensureD1AnalyticsTablesExist(): Promise<boolean> {
     `CREATE INDEX IF NOT EXISTS idx_analytics_sessions_started_at ON analytics_sessions(started_at);`,
     `CREATE INDEX IF NOT EXISTS idx_analytics_sessions_source ON analytics_sessions(source);`,
     `CREATE INDEX IF NOT EXISTS idx_analytics_sessions_visitor_id ON analytics_sessions(visitor_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_analytics_sessions_traffic_type ON analytics_sessions(traffic_type);`,
     `CREATE INDEX IF NOT EXISTS idx_analytics_events_session_id ON analytics_events(session_id);`,
     `CREATE INDEX IF NOT EXISTS idx_analytics_events_event_name_created ON analytics_events(event_name, created_at);`,
     `CREATE INDEX IF NOT EXISTS idx_analytics_events_product_id ON analytics_events(product_id);`,
     `CREATE INDEX IF NOT EXISTS idx_analytics_order_attribution_created ON analytics_order_attribution(created_at);`,
     `CREATE INDEX IF NOT EXISTS idx_analytics_order_attribution_source ON analytics_order_attribution(source);`,
     `CREATE INDEX IF NOT EXISTS idx_analytics_order_attribution_order_nbr ON analytics_order_attribution(order_nbr);`,
+    `ALTER TABLE analytics_sessions ADD COLUMN traffic_type TEXT DEFAULT 'human';`,
+    `ALTER TABLE analytics_sessions ADD COLUMN bot_name TEXT;`,
   ];
 
   for (const sql of queries) {
