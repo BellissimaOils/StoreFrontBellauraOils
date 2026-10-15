@@ -556,6 +556,32 @@ ${t('cart.total')}: ${total} ${shippingLabel}
     if (e) e.preventDefault();
     if (cart.length === 0) return;
 
+    const trimmedName = (formData.firstName || '').trim();
+    if (trimmedName.length > 50) {
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'validation' },
+      });
+      setError(
+        language === 'ar'
+          ? 'الاسم الكامل يجب ألا يتجاوز 50 حرفاً.'
+          : 'Full name must not exceed 50 characters.'
+      );
+      return;
+    }
+
+    const trimmedPhone = (formData.phone || '').trim();
+    if (trimmedPhone.length > 24) {
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'validation' },
+      });
+      setError(
+        language === 'ar'
+          ? 'رقم الهاتف يجب ألا يتجاوز 24 رقماً.'
+          : 'Phone number must not exceed 24 characters.'
+      );
+      return;
+    }
+
     const trimmedAddress = (formData.address || '').trim();
     if (trimmedAddress.length < 20) {
       tracker.track('checkout_submit_failed', {
@@ -567,6 +593,24 @@ ${t('cart.total')}: ${total} ${shippingLabel}
           : language === 'fr'
             ? "L'adresse doit comporter au moins 20 caractères pour assurer la livraison."
             : 'Address must be at least 20 characters to ensure accurate delivery.'
+      );
+      const el = document.querySelector('textarea[name="address"]') as HTMLTextAreaElement;
+      if (el) {
+        el.focus();
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+    if (trimmedAddress.length > 100) {
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'validation' },
+      });
+      setAddressError(
+        language === 'ar'
+          ? 'العنوان طويل جداً (الحد الأقصى 100 حرف).'
+          : language === 'fr'
+            ? "L'adresse est trop longue (100 caractères maximum)."
+            : 'Address is too long (maximum 100 characters).'
       );
       const el = document.querySelector('textarea[name="address"]') as HTMLTextAreaElement;
       if (el) {
@@ -1330,6 +1374,7 @@ ${t('cart.total')}: ${total} ${shippingLabel}
                 <label className="text-[10px] uppercase font-bold tracking-widest text-primary-earth/40">{language === 'ar' ? 'الاسم الكامل' : 'Full Name'}</label>
                 <input 
                   required
+                  maxLength={50}
                   name="firstName"
                   value={formData.firstName}
                   onChange={handleChange}
@@ -1343,6 +1388,7 @@ ${t('cart.total')}: ${total} ${shippingLabel}
                   type="tel"
                   dir="ltr"
                   required
+                  maxLength={24}
                   name="phone"
                   value={formData.phone}
                   onChange={handleChange}
@@ -1480,21 +1526,22 @@ ${t('cart.total')}: ${total} ${shippingLabel}
                   <span className={`text-[10px] font-medium transition-colors ${
                     formData.address.trim().length >= 20 ? 'text-emerald-600 font-bold' : 'text-primary-earth/50'
                   }`}>
-                    {formData.address.trim().length} / 20 {language === 'ar' ? 'حرف كحد أدنى' : language === 'fr' ? 'caractères min' : 'chars min'}
+                    {formData.address.trim().length} / 100 {language === 'ar' ? '(20 كحد أدنى)' : language === 'fr' ? '(20 min)' : '(20 min)'}
                   </span>
                 </div>
                 <textarea 
                   required
+                  maxLength={100}
                   name="address"
                   rows={3}
                   value={formData.address}
                   onChange={handleChange}
                   placeholder={
                     language === 'ar'
-                      ? 'يرجى كتابة العنوان بالتفصيل (اسم الشارع، رقم العمارة أو المنزل، الحي، علامة مميزة... 20 حرفاً على الأقل)'
+                      ? 'يرجى كتابة العنوان بالتفصيل (اسم الشارع، رقم العمارة أو المنزل، الحي... 20 إلى 100 حرف)'
                       : language === 'fr'
-                        ? "Adresse complète (rue, n° d'immeuble/maison, quartier... au moins 20 caractères)"
-                        : "Detailed street address, building/house number, neighborhood... (at least 20 characters)"
+                        ? "Adresse complète (rue, n° d'immeuble/maison, quartier... 20 à 100 caractères)"
+                        : "Detailed street address, building number, neighborhood... (20 to 100 characters)"
                   }
                   className={`w-full bg-white border px-4 py-3 focus:outline-none transition-colors resize-none ${
                     addressError

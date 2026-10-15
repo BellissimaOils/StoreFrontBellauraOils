@@ -89,6 +89,22 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
       return;
     }
 
+    if (formData.fullName.trim().length > 50) {
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'validation' },
+      });
+      setError(isAr ? 'الاسم الكامل يجب ألا يتجاوز 50 حرفاً' : 'Full name must not exceed 50 characters');
+      return;
+    }
+
+    if (formData.phone.trim().length > 24) {
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'validation' },
+      });
+      setError(isAr ? 'رقم الهاتف يجب ألا يتجاوز 24 رقماً' : 'Phone number must not exceed 24 characters');
+      return;
+    }
+
     const trimmedAddress = (formData.address || '').trim();
     if (trimmedAddress.length < 20) {
       tracker.track('checkout_submit_failed', {
@@ -98,6 +114,17 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
         isAr
           ? 'يرجى كتابة عنوان مفصل (20 حرفاً على الأقل) لضمان دقة التوصيل.'
           : 'Please enter a detailed delivery address (at least 20 characters).'
+      );
+      return;
+    }
+    if (trimmedAddress.length > 100) {
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'validation' },
+      });
+      setError(
+        isAr
+          ? 'العنوان طويل جداً (الحد الأقصى 100 حرف).'
+          : 'Address is too long (maximum 100 characters).'
       );
       return;
     }
@@ -227,6 +254,7 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
           <input
             type="text"
             required
+            maxLength={50}
             value={formData.fullName}
             onChange={e => handleInputChange('fullName', e.target.value)}
             className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2c5836]/50 transition-all text-sm"
@@ -242,6 +270,7 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
             type="tel"
             required
             dir="ltr"
+            maxLength={24}
             value={formData.phone}
             onChange={e => handleInputChange('phone', e.target.value)}
             className={`w-full px-4 py-3 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2c5836]/50 transition-all text-sm ${isAr ? 'text-right' : 'text-left'}`}
@@ -276,11 +305,12 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
             <span className={`text-[10px] font-medium transition-colors ${
               formData.address.trim().length >= 20 ? 'text-emerald-600 font-bold' : 'text-gray-400'
             }`}>
-              {formData.address.trim().length} / 20 {isAr ? 'حرف كحد أدنى' : 'chars min'}
+              {formData.address.trim().length} / 100 {isAr ? '(20 كحد أدنى)' : '(20 min)'}
             </span>
           </div>
           <textarea
             required
+            maxLength={100}
             rows={2}
             value={formData.address}
             onChange={e => handleInputChange('address', e.target.value)}
@@ -289,7 +319,7 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
                 ? 'border-amber-400 focus:ring-amber-400/50'
                 : 'border-gray-200 focus:ring-[#2c5836]/50'
             }`}
-            placeholder={isAr ? 'العنوان بالتفصيل (اسم الشارع، الحي، رقم المنزل... 20 حرفاً على الأقل)' : 'Detailed full address (at least 20 characters)'}
+            placeholder={isAr ? 'العنوان بالتفصيل (اسم الشارع، الحي، رقم المنزل... 20 إلى 100 حرف)' : 'Detailed full address (20 to 100 characters)'}
           />
         </div>
         

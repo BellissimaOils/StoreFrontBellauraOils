@@ -357,22 +357,25 @@ export function createCheckoutRouter(state: CheckoutState) {
     }
 
     // Strict customer text field bounds
-    const firstName = String(customer.firstName || "").trim();
+    const firstName = String(customer.firstName || customer.fullName || "").trim();
     const lastName = String(customer.lastName || "").trim();
-    if (firstName.length > 100 || lastName.length > 100) {
+    const fullNameCombined = lastName ? `${firstName} ${lastName}`.trim() : firstName;
+    if (firstName.length > 50 || lastName.length > 50 || fullNameCombined.length > 50) {
       releasePendingKey();
       return res.status(400).json({
         success: false,
-        message: "Customer name must not exceed 100 characters.",
+        message: "Customer name must not exceed 50 characters.",
+        messageAr: "اسم العميل يجب ألا يتجاوز 50 حرفاً.",
       });
     }
 
     const customerPhone = String(customer.phone || "").trim();
-    if (!customerPhone || customerPhone.length < 8 || customerPhone.length > 25) {
+    if (!customerPhone || customerPhone.length < 8 || customerPhone.length > 24) {
       releasePendingKey();
       return res.status(400).json({
         success: false,
-        message: "A valid contact phone number (8-25 characters) is required to place an order.",
+        message: "A valid contact phone number (8-24 characters) is required to place an order.",
+        messageAr: "رقم الهاتف يجب أن يتكون من 8 إلى 24 رقماً.",
       });
     }
 
@@ -382,15 +385,15 @@ export function createCheckoutRouter(state: CheckoutState) {
       return res.status(400).json({
         success: false,
         message: "Please enter a detailed delivery address (at least 20 characters).",
-        messageAr: "يرجى كتابة عنوان مفصل (20 حرفًا على الأقل) لضمان دقة التوصيل.",
+        messageAr: "يرجى كتابة عنوان مفصل (20 حرفاً على الأقل) لضمان دقة التوصيل.",
       });
     }
-    if (customerAddress.length > 300) {
+    if (customerAddress.length > 100) {
       releasePendingKey();
       return res.status(400).json({
         success: false,
-        message: "Delivery address must not exceed 300 characters.",
-        messageAr: "العنوان طويل جداً (الحد الأقصى 300 حرف).",
+        message: "Delivery address must not exceed 100 characters.",
+        messageAr: "العنوان طويل جداً (الحد الأقصى 100 حرف).",
       });
     }
 

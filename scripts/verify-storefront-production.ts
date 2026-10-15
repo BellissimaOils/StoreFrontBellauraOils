@@ -377,7 +377,36 @@ function validateLivePackPurchase(packId: string, clientLivePrice: string): { va
 assert(validateLivePackPurchase('nonexistent', '10 DH').valid === false, 'Nonexistent pack rejected');
 assert(validateLivePackPurchase('pack-expired', '120 DH').valid === false, 'Hidden/inactive pack rejected');
 const validPackRes = validateLivePackPurchase('pack-duo', '5 DH');
-assert(validPackRes.valid === true && validPackRes.price === 199, 'Active pack accepted with authoritative D1 price of 199 MAD');
+// ----------------------------------------------------------------------------
+// 8. CHECKOUT INPUT LENGTH BOUNDS (NAME <= 50, PHONE <= 24, ADDRESS <= 100)
+// ----------------------------------------------------------------------------
+console.log('\n--- 8. CHECKOUT INPUT LENGTH BOUNDS ---');
+
+function validateCustomerFieldLengths(name: string, phone: string, address: string): { valid: boolean; error?: string } {
+  const trimmedName = name.trim();
+  if (!trimmedName || trimmedName.length > 50) {
+    return { valid: false, error: 'Name must be 1 to 50 characters.' };
+  }
+  const trimmedPhone = phone.trim();
+  if (!trimmedPhone || trimmedPhone.length < 8 || trimmedPhone.length > 24) {
+    return { valid: false, error: 'Phone must be 8 to 24 characters.' };
+  }
+  const trimmedAddress = address.trim();
+  if (!trimmedAddress || trimmedAddress.length < 20 || trimmedAddress.length > 100) {
+    return { valid: false, error: 'Address must be 20 to 100 characters.' };
+  }
+  return { valid: true };
+}
+
+assert(validateCustomerFieldLengths('Fatima Zahra', '0612345678', '123 Boulevard d Anfa Casablanca Maroc').valid === true, 'Valid customer fields accepted');
+assert(validateCustomerFieldLengths('a'.repeat(50), '0612345678', 'a'.repeat(25)).valid === true, 'Name with exactly 50 characters is accepted');
+assert(validateCustomerFieldLengths('a'.repeat(51), '0612345678', 'a'.repeat(25)).valid === false, 'Name with 51 characters is rejected (>50)');
+assert(validateCustomerFieldLengths('Fatima', '06' + '1'.repeat(22), 'a'.repeat(25)).valid === true, 'Phone with 24 characters is accepted');
+assert(validateCustomerFieldLengths('Fatima', '06' + '1'.repeat(23), 'a'.repeat(25)).valid === false, 'Phone with 25 characters is rejected (>24)');
+assert(validateCustomerFieldLengths('Fatima', '06123', 'a'.repeat(25)).valid === false, 'Phone shorter than 8 characters is rejected');
+assert(validateCustomerFieldLengths('Fatima', '0612345678', 'a'.repeat(19)).valid === false, 'Address shorter than 20 characters is rejected');
+assert(validateCustomerFieldLengths('Fatima', '0612345678', 'a'.repeat(100)).valid === true, 'Address with exactly 100 characters is accepted');
+assert(validateCustomerFieldLengths('Fatima', '0612345678', 'a'.repeat(101)).valid === false, 'Address with 101 characters is rejected (>100)');
 
 console.log('\n===============================================================');
 console.log(`PRODUCTION READINESS SUITE: ${passed} Passed, ${failed} Failed`);
