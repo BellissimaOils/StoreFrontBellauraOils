@@ -370,7 +370,16 @@ export function createCheckoutRouter(state: CheckoutState) {
     }
 
     const customerPhone = String(customer.phone || "").trim();
-    if (!customerPhone || customerPhone.length < 8 || customerPhone.length > 24) {
+    if (!customerPhone || !/^[0-9+\-\s]+$/.test(customerPhone)) {
+      releasePendingKey();
+      return res.status(400).json({
+        success: false,
+        message: "Phone number can only contain numbers, +, -, or spaces.",
+        messageAr: "رقم الهاتف يجب أن يحتوي على أرقام فقط (يُسمح بـ + أو - أو مسافة).",
+      });
+    }
+    const phoneDigits = customerPhone.replace(/\D/g, "");
+    if (phoneDigits.length < 8 || customerPhone.length > 24) {
       releasePendingKey();
       return res.status(400).json({
         success: false,

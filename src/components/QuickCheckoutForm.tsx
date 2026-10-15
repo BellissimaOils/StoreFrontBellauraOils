@@ -76,7 +76,12 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
 
   const handleInputChange = (field: string, value: string) => {
     triggerFormStart();
-    setFormData(prev => ({ ...prev, [field]: value }));
+    let cleanVal = value;
+    if (field === 'phone') {
+      // Allow only numbers, +, -, and spaces
+      cleanVal = value.replace(/[^0-9+\-\s]/g, '');
+    }
+    setFormData(prev => ({ ...prev, [field]: cleanVal }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -97,7 +102,33 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
       return;
     }
 
-    if (formData.phone.trim().length > 24) {
+    const trimmedPhone = (formData.phone || '').trim();
+    if (!trimmedPhone || !/^[0-9+\-\s]+$/.test(trimmedPhone)) {
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'validation' },
+      });
+      setError(
+        isAr
+          ? 'رقم الهاتف يجب أن يحتوي على أرقام فقط (يُسمح بـ + أو - أو مسافة)'
+          : 'Phone number can only contain numbers, +, -, or spaces'
+      );
+      return;
+    }
+
+    const phoneDigits = trimmedPhone.replace(/\D/g, '');
+    if (phoneDigits.length < 8) {
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'validation' },
+      });
+      setError(
+        isAr
+          ? 'يرجى إدخال رقم هاتف صحيح (8 أرقام على الأقل)'
+          : 'Please enter a valid phone number (at least 8 digits)'
+      );
+      return;
+    }
+
+    if (trimmedPhone.length > 24) {
       tracker.track('checkout_submit_failed', {
         metadata: { reason: 'validation' },
       });
@@ -268,6 +299,8 @@ export default function QuickCheckoutForm({ product, qty }: { product: any, qty:
           </label>
           <input
             type="tel"
+            inputMode="tel"
+            pattern="[0-9+\-\s]*"
             required
             dir="ltr"
             maxLength={24}

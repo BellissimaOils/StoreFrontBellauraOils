@@ -546,7 +546,11 @@ ${t('cart.total')}: ${total} ${shippingLabel}
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     triggerFormStart();
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    let val = e.target.value;
+    if (e.target.name === 'phone') {
+      val = val.replace(/[^0-9+\-\s]/g, '');
+    }
+    setFormData({ ...formData, [e.target.name]: val });
     if (e.target.name === 'address' && e.target.value.trim().length >= 20) {
       setAddressError(null);
     }
@@ -570,6 +574,35 @@ ${t('cart.total')}: ${total} ${shippingLabel}
     }
 
     const trimmedPhone = (formData.phone || '').trim();
+    if (!trimmedPhone || !/^[0-9+\-\s]+$/.test(trimmedPhone)) {
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'validation' },
+      });
+      setError(
+        language === 'ar'
+          ? 'رقم الهاتف يجب أن يحتوي على أرقام فقط (يُسمح بـ + أو - أو مسافة).'
+          : language === 'fr'
+            ? 'Le numéro de téléphone ne doit contenir que des chiffres, +, - ou des espaces.'
+            : 'Phone number can only contain numbers, +, -, or spaces.'
+      );
+      return;
+    }
+
+    const phoneDigits = trimmedPhone.replace(/\D/g, '');
+    if (phoneDigits.length < 8) {
+      tracker.track('checkout_submit_failed', {
+        metadata: { reason: 'validation' },
+      });
+      setError(
+        language === 'ar'
+          ? 'يرجى إدخال رقم هاتف صحيح (8 أرقام على الأقل).'
+          : language === 'fr'
+            ? 'Veuillez saisir un numéro de téléphone valide (au moins 8 chiffres).'
+            : 'Please enter a valid phone number (at least 8 digits).'
+      );
+      return;
+    }
+
     if (trimmedPhone.length > 24) {
       tracker.track('checkout_submit_failed', {
         metadata: { reason: 'validation' },
@@ -1386,6 +1419,8 @@ ${t('cart.total')}: ${total} ${shippingLabel}
                 <label className="text-[10px] uppercase font-bold tracking-widest text-primary-earth/40">{t('checkout.phone')}</label>
                 <input 
                   type="tel"
+                  inputMode="tel"
+                  pattern="[0-9+\-\s]*"
                   dir="ltr"
                   required
                   maxLength={24}
