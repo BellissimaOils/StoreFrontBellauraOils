@@ -521,11 +521,6 @@ export default function ProductDetail() {
               onClick={handleImageClick}
               className={`w-full aspect-square bg-[#0a0a0a] rounded-[24px] border border-gray-100/10 overflow-hidden flex items-center justify-center shadow-2xl relative group cursor-pointer`}
             >
-              {/* Skeleton placeholder while loading image. Was bg-[#121212]
-                  (near-black), which flashed dark over the product image;
-                  now uses the shared light-lilac loading token. */}
-              <div className="absolute inset-0 bg-background-lilac animate-pulse pointer-events-none" />
-
               {/* Click instruction hint overlay */}
               <div className="absolute top-4 right-4 rtl:left-4 rtl:right-auto bg-white/10 text-white/90 text-[10px] uppercase font-bold tracking-[0.15em] px-3.5 py-2 z-20 shadow-none backdrop-blur-md rounded-full flex items-center gap-1.5 border border-white/10 hover:bg-white/20 transition-all duration-300">
                 <ZoomIn className="w-3.5 h-3.5" />
@@ -552,13 +547,8 @@ export default function ProductDetail() {
                   loading="eager"
                   fetchPriority="high"
                   decoding="sync"
-                  className="relative z-10 w-full h-full object-contain pointer-events-none transition-opacity duration-300"
+                  className="relative z-10 w-full h-full object-contain pointer-events-none"
                   referrerPolicy="no-referrer"
-                  onLoad={(e) => {
-                    const el = e.currentTarget as HTMLImageElement;
-                    el.style.opacity = '1';
-                  }}
-                  style={{ opacity: 0 }}
                 />
               )}
 
