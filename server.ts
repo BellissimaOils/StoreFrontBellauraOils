@@ -362,11 +362,11 @@ const app: Promise<express.Express> = (async () => {
   server.use("/api/", apiLimiter);
 
   server.use(compression());
-  // Scoped limits: 10mb for review photos, 64kb for checkout payloads, 1mb default
-  server.use("/api/reviews", express.json({ limit: "10mb" }));
+  // Scoped limits: 15mb for review photos, 64kb for checkout payloads, 1mb default
+  server.use("/api/reviews", express.json({ limit: "15mb" }));
   server.use("/api/checkout", express.json({ limit: "64kb" }));
   server.use(express.json({ limit: "1mb" }));
-  server.use(express.urlencoded({ extended: true, limit: "10mb" }));
+  server.use(express.urlencoded({ extended: true, limit: "15mb" }));
 
   const state = buildState();
 

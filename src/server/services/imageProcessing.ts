@@ -7,9 +7,9 @@ import { uploadToR2 } from "../utils/r2Client";
 const ALLOWED_IMAGE_TYPES = ["jpeg", "jpg", "png", "webp", "gif", "avif"];
 
 /**
- * Maximum allowed decoded image buffer size (5MB per image).
+ * Maximum allowed decoded image buffer size (15MB per image to safely accommodate raw originals).
  */
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 
 export function createImageProcessingService() {
   /**
