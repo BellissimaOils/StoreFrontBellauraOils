@@ -93,16 +93,26 @@ export function isAlreadyCompressedFormat(file: File): boolean {
  * Compresses an image to ultra-compact AVIF format (with WebP / JPEG fallback if browser canvas lacks AVIF encoding).
  * Maintains full backwards compatibility with signature: compressImage(file, maxWidth, maxHeight, quality).
  */
+export interface CompressImageOptions {
+  /** If true, removes near-white backdrop to make the background transparent. If false/omitted, preserves solid white background like JPG. */
+  removeBackground?: boolean;
+}
+
+/**
+ * Compresses an image to ultra-compact AVIF format (with WebP / JPEG fallback if browser canvas lacks AVIF encoding).
+ * Maintains full backwards compatibility with signature: compressImage(file, maxWidth, maxHeight, quality, options).
+ */
 export const compressImage = (
   file: File,
   maxWidth = 1500,
   maxHeight = 1500,
-  quality = 0.8
+  quality = 0.8,
+  options?: CompressImageOptions
 ): Promise<string> => {
   return new Promise((resolve, reject) => {
-    // If the file is already an AVIF image and reasonably sized, preserve it directly without re-compression loss
+    // If the file is already an AVIF image and reasonably sized, and no background removal is requested, preserve it directly
     const isAvif = file.type === "image/avif" || file.name.toLowerCase().endsWith(".avif");
-    if (isAvif && file.size < 3 * 1024 * 1024) {
+    if (isAvif && file.size < 3 * 1024 * 1024 && !options?.removeBackground) {
       readFileAsDataUrl(file).then(resolve).catch(reject);
       return;
     }
@@ -147,7 +157,31 @@ export const compressImage = (
 
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
-        ctx.drawImage(img, 0, 0, width, height);
+
+        const shouldRemoveBg = Boolean(options?.removeBackground);
+        if (shouldRemoveBg) {
+          // Remove white/light background to make it transparent
+          ctx.drawImage(img, 0, 0, width, height);
+          try {
+            const imgData = ctx.getImageData(0, 0, width, height);
+            const d = imgData.data;
+            for (let i = 0; i < d.length; i += 4) {
+              const r = d[i], g = d[i + 1], b = d[i + 2];
+              // Convert near-white background pixels to transparent
+              if (r >= 238 && g >= 238 && b >= 238) {
+                d[i + 3] = 0;
+              }
+            }
+            ctx.putImageData(imgData, 0, 0);
+          } catch (e) {
+            console.warn("Background removal error:", e);
+          }
+        } else {
+          // Keep background intact: fill solid white (like JPG) so the background is never removed
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+        }
 
         let compressedBase64 = "";
 
