@@ -53,8 +53,11 @@
     <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
     <link rel="dns-prefetch" href="https://clerk.accounts.dev" />
     <link rel="preconnect" href="https://clerk.accounts.dev" crossorigin />
-    <link rel="dns-prefetch" href="https://pub-f1cb75e5fb2046429b9f7a7d4a4b4bb2.r2.dev" />
-    <link rel="preconnect" href="https://pub-f1cb75e5fb2046429b9f7a7d4a4b4bb2.r2.dev" crossorigin />
+    <!-- Images are plain (non-CORS) requests, so these preconnects must NOT carry
+         `crossorigin`: with it the browser opens a connection images cannot reuse.
+         The first host serves product images, the second the default Home hero. -->
+    <link rel="preconnect" href="https://pub-f1cb75e5fb2046429b9f7a7d4a4b4bb2.r2.dev" />
+    <link rel="preconnect" href="https://pub-584126fe09324e178d68a3f2461340ea.r2.dev" />
     <!-- The server replaces this per route before sending the HTML, so it is
          only ever seen if that injection is skipped. It is deliberately the
          ARABIC default: LanguageContext starts in Arabic, so this matches what

@@ -1,3 +1,4 @@
+import { prefetchSection } from '../lib/useSectionProducts';
 import { useState, useEffect } from 'react';
 import { ShoppingBag, Globe } from 'lucide-react';
 import { useCart } from '../context/CartContext';
@@ -81,8 +82,10 @@ export default function Navbar() {
   const isHome = location.pathname === '/';
 
   const handlePrefetchRoute = (path: string) => {
-    if (path === '/skin' || path === '/hair-and-scalp' || path === '/products' || path.startsWith('/category')) {
+    if (path === '/skin' || path === '/hair-and-scalp' || path === '/products' || path === '/packs' || path.startsWith('/category')) {
       import('./CategoryPage');
+      // Also start this section's products now, so the page is ready when the click lands.
+      if (path !== '/') prefetchSection(path.replace(/^\/+/, ''));
     } else if (path === '/reviews') {
       import('./ReviewsPage');
     }

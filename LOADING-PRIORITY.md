@@ -25,3 +25,20 @@ The previous v2 validation notes do not cover these latest changes. This revisio
 ## Deployment
 
 Deploy the storefront and its API together from this source. Preserve the environment variables configured in production; this archive contains no production secrets.
+
+---
+
+## Update: Hero priority + per-section loading
+
+### Home hero
+- The server now loads the homepage rows itself when it builds the Home HTML (max 1.5s wait on a cold instance, instant + background refresh on a warm one). Before, the hero `<link rel="preload">` only existed if that instance already had the rows in memory, so on a cold start the browser discovered the hero image only after HTML -> JS -> `/api/homepage-sections`.
+- The injected preload now matches the `<img>` (`referrerpolicy="no-referrer"`) and a plain `preconnect` to the image host is added. The old `crossorigin` preconnect could not be reused by `<img>` requests.
+- Everything below the Hero (other sections, their JS chunks, featured products, their images) now waits until the Hero image is ready (5s safety timeout, and it opens at once if the page has no Hero). The Hero no longer competes with them.
+
+### Sections (/products, /skin, /hair-and-scalp, /packs, custom)
+- New `GET /api/products/section/:slug`: returns only that section's products, without `description`/`usage`/`ingredients`. Uses one small D1 query (no `SELECT *`, no table checks) cached 30s on the server and shared by all sections. The matching rule moved to `src/lib/categoryMatch.ts` so server and page use the same one.
+- `CategoryPage` no longer calls `useProducts(true)` (full catalogue). It uses `useSectionProducts` (`src/lib/useSectionProducts.ts`), which keeps lists in memory (re-entering a section is instant, refreshed in the background).
+- Section data is prefetched: on nav hover/touch, after the Hero is ready (one section at a time), and at startup on a direct section URL.
+- Featured query now also selects `display_section`, which the featured route already filtered on but was never selected.
+
+Not run: no live Vercel/D1 timing. Verified here with a type-check of the changed files, a production build, and a mocked-D1 run (section filtering, stripped text, hero preload in HTML).

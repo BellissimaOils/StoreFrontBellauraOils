@@ -26,6 +26,7 @@ import FloatingCart from "./components/FloatingCart";
 import BackToTopButton from "./components/BackToTopButton";
 import Footer from "./components/Footer";
 import HomePage from "./components/HomePage";
+import { prefetchSection } from "./lib/useSectionProducts";
 
 // Each route downloads its own page code, including direct product visits.
 const ProductDetail = lazyRetry(() => import("./components/ProductDetail"));
@@ -89,6 +90,13 @@ function BackgroundRoutePreloader() {
       if (path === "/products") return !["/products", "/skin", "/hair-and-scalp", "/packs"].includes(pathname);
       return !pathname.startsWith(path);
     }).map(([, load]) => load);
+    // Product lists of the built-in sections, one at a time and only after the
+    // gate above (Hero ready on Home), so switching sections later is instant.
+    // They go right after the category page code, before the less-visited pages.
+    const sectionLoads = ["products", "skin", "hair-and-scalp", "packs"]
+      .filter((slug) => pathname !== `/${slug}`)
+      .map((slug) => () => prefetchSection(slug));
+    queue = [...queue.slice(0, 1), ...sectionLoads, ...queue.slice(1)];
 
     const runNext = () => {
       if (cancelled || index >= queue.length) return;

@@ -2,6 +2,7 @@ import express from "express";
 import { matchesProduct } from "../../lib/productMatch";
 import { sanitizeCredentials, isMaskedValue } from "../utils/sqlUtils";
 import { normalizeSizeLabel } from "../../lib/sizeUtils";
+import { hasCategoryMatch, getCategoryTargets, toListProduct } from "../../lib/categoryMatch";
 
 // Product catalog routes for the Public Storefront.
 // Only customer-facing GET /products and GET /products/:id/data are exposed.
@@ -17,6 +18,7 @@ interface ProductsState {
   refreshStoreSettings?: (force?: boolean) => Promise<void>;
   fetchProductsFromD1: () => Promise<any[] | null>;
   fetchFeaturedProductsFromD1?: () => Promise<any[] | null>;
+  fetchProductListFromD1?: () => Promise<any[] | null>;
   syncD1ToClassicProducts: () => void;
   mapD1RowToProductSchema: (row: any) => any;
   ensureProductsDataTablesExist: () => Promise<boolean>;
@@ -25,6 +27,42 @@ interface ProductsState {
 export function createProductRouter(state: ProductsState) {
   const router = express.Router();
   let featuredCache: { products: any[]; timestamp: number } | null = null;
+  // One slim product list shared by every section page. A visitor opening
+  // /skin, then /packs, is served from this instead of hitting D1 twice.
+  let listCache: { products: any[]; timestamp: number } | null = null;
+  let listInflight: Promise<any[]> | null = null;
+  const LIST_TTL_MS = 30_000;
+
+  const loadProductList = async (): Promise<any[]> => {
+    if (listCache && Date.now() - listCache.timestamp < LIST_TTL_MS) return listCache.products;
+    if (listInflight) return listInflight;
+    listInflight = (async () => {
+      try {
+        const rows = await state.fetchProductListFromD1?.();
+        let list: any[];
+        if (rows) {
+          list = rows.map(state.mapD1RowToProductSchema).filter(Boolean);
+        } else {
+          // D1 not configured / unreachable: fall back to whatever the server
+          // already holds in memory, stripped of the long text fields.
+          const catalog = state.getD1ApiCacheProducts().data || state.getProducts();
+          list = Array.isArray(catalog) ? catalog : [];
+        }
+        list = list
+          .filter((p: any) => p.in_catalog !== 0 && p.in_catalog !== "0" && p.in_catalog !== false)
+          .map(toListProduct);
+        listCache = { products: list, timestamp: Date.now() };
+        return list;
+      } catch (error) {
+        // Serve a stale list rather than an error page if one exists.
+        if (listCache) return listCache.products;
+        throw error;
+      } finally {
+        listInflight = null;
+      }
+    })();
+    return listInflight;
+  };
 
 
   const buildPublicSettings = async () => {
@@ -76,6 +114,26 @@ export function createProductRouter(state: ProductsState) {
       const catalog = state.getD1ApiCacheProducts().data || state.getProducts();
       const products = Array.isArray(catalog) ? catalog.slice(0, 24) : [];
       return res.json({ success: true, products });
+    }
+  });
+
+  // Products of ONE section page, without the long text fields. Replaces the
+  // "download the whole catalogue, filter in the browser" step every section
+  // page used to do. The filtering rule is the shared one in lib/categoryMatch.
+  router.get("/products/section/:slug", async (req, res) => {
+    res.setHeader("Cache-Control", "public, max-age=15, stale-while-revalidate=60");
+    try {
+      const slug = String(req.params.slug || "").toLowerCase().trim().slice(0, 80);
+      const targets = getCategoryTargets(slug || "products");
+      const list = await loadProductList();
+      return res.json({
+        success: true,
+        slug,
+        products: list.filter((p: any) => hasCategoryMatch(p, targets)),
+      });
+    } catch (error) {
+      console.error("Failed to load section products:", error);
+      return res.status(503).json({ success: false, products: [] });
     }
   });
 

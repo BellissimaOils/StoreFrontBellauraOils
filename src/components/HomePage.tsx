@@ -161,6 +161,7 @@ function HomePage() {
                   preload.rel = "preload";
                   preload.as = "image";
                   preload.setAttribute("data-bellaura-hero-preload", "true");
+                  preload.referrerPolicy = "no-referrer";
                   document.head.appendChild(preload);
                 }
                 preload.href = rawHeroUrl;
@@ -199,16 +200,27 @@ function HomePage() {
   }, []);
 
   const hasCollection = sections.some(s => s.type === 'collection');
-  // Start the small featured-products request as soon as Home knows the
-  // collection exists. Waiting for the hero image serialized independent work.
+  const hasHero = sections.some(s => s.type === 'hero');
+
+  // Everything below the Hero (other sections, their JS chunks, product
+  // requests and images) waits until the Hero image has arrived, so nothing
+  // competes with it for bandwidth. The gate also opens when there is no Hero
+  // to wait for, or after 5s, so a slow/broken image can never block the page.
+  const [gateTimedOut, setGateTimedOut] = React.useState(false);
   React.useEffect(() => {
-    if (!hasCollection || !heroReady) return;
-    fetchFeaturedProducts();
-    void import('./CollectionSwiper').catch(() => {});
-  }, [hasCollection, heroReady, fetchFeaturedProducts]);
+    const id = window.setTimeout(() => setGateTimedOut(true), 5000);
+    return () => window.clearTimeout(id);
+  }, []);
+  const contentGateOpen = heroReady || gateTimedOut || (hasFetched && !hasHero);
 
   React.useEffect(() => {
-    if (!heroReady || !hasCollection || featuredProducts.length === 0) return;
+    if (!hasCollection || !contentGateOpen) return;
+    fetchFeaturedProducts();
+    void import('./CollectionSwiper').catch(() => {});
+  }, [hasCollection, contentGateOpen, fetchFeaturedProducts]);
+
+  React.useEffect(() => {
+    if (!contentGateOpen || !hasCollection || featuredProducts.length === 0) return;
     featuredProducts.filter(isCollectionProduct).slice(0, 4).forEach((product, index) => {
       const src = getOptimizedImageUrl(product.image, 'eco', 500);
       if (!src || warmedImages.current.has(src)) return;
@@ -219,7 +231,7 @@ function HomePage() {
       warmedImages.current.set(src, image);
       image.src = src;
     });
-  }, [featuredProducts, hasCollection, heroReady]);
+  }, [featuredProducts, hasCollection, contentGateOpen]);
 
   const renderSection = (s: any, idx: number) => {
     const isEn = language === "en";
@@ -816,9 +828,11 @@ function HomePage() {
       ) : sections.length > 0 ? (
         <div className="space-y-0">
           {sections.map((s, idx) => (
-            <DeferredSection key={s.id || idx} eager={idx < 2 || s.type === 'hero'}
+            <DeferredSection key={s.id || idx}
+              eager={s.type === 'hero' || (contentGateOpen && idx < 2)}
+              hold={s.type !== 'hero' && !contentGateOpen}
               preloadDistance={s.type === 'collection' ? 1200 : 300}
-              onApproach={s.type === 'collection' && heroReady ? fetchFeaturedProducts : undefined}>
+              onApproach={s.type === 'collection' && contentGateOpen ? fetchFeaturedProducts : undefined}>
               {() => <React.Suspense fallback={<div className="min-h-[300px] bg-background-soft animate-pulse" />}>
                 {renderSection(s, idx)}
               </React.Suspense>}

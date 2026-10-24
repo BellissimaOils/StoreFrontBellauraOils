@@ -125,6 +125,12 @@ export function prefetchAppInitialData() {
     warm("/api/faq");
     warm("/api/store-settings");
   } else {
+    // A section page needs its own product list right away: start it together
+    // with /api/sections instead of after the JS bundle has mounted the page.
+    const slug = path.replace(/^\/+|\/+$/g, "").toLowerCase();
+    if (["products", "skin", "hair-and-scalp", "packs"].includes(slug)) {
+      void fetchWithCache(`/api/products/section/${slug}`, 30_000).catch(() => {});
+    }
     warm("/api/sections");
     warm("/api/store-settings");
   }

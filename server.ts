@@ -61,6 +61,7 @@ import {
   mapD1RowToProductSchema,
   fetchRealD1ProductsIfConfigured,
   fetchRealD1FeaturedProductsIfConfigured,
+  fetchRealD1ProductListIfConfigured,
   fetchRealD1CountriesIfConfigured,
   fetchRealD1CouponsIfConfigured,
   fetchRealD1CitiesIfConfigured,
@@ -168,6 +169,74 @@ let siteSections: any[] = [];
 let homepageSections: any[] = [];
 let lastDbLoadTime = 0;
 
+// ---------------------------------------------------------------------------
+// Home hero discovery
+// ---------------------------------------------------------------------------
+// The hero image URL lives in homepage_sections. It used to be injected into
+// the HTML (as a <link rel="preload">) only when THIS server instance already
+// happened to have those rows in memory - i.e. never on a cold serverless
+// start, which is exactly when a visitor feels it. The browser then had to
+// download the HTML, then the JS, then call /api/homepage-sections, and only
+// then learned which picture to fetch. Now the HTML request itself loads the
+// rows (bounded by a short timeout) so the preload is in the first bytes.
+let homepageSectionsLoadedAt = 0;
+let homepageSectionsInflight: Promise<void> | null = null;
+const HOMEPAGE_SECTIONS_FRESH_MS = 15_000;
+
+function refreshHomepageSections(): Promise<void> {
+  if (homepageSectionsInflight) return homepageSectionsInflight;
+  homepageSectionsInflight = (async () => {
+    const accountId = sanitizeCredentials(process.env.CLOUDFLARE_D1_ACCOUNT_ID);
+    const databaseId = sanitizeCredentials(process.env.CLOUDFLARE_D1_DATABASE_ID);
+    const apiToken = sanitizeCredentials(process.env.CLOUDFLARE_D1_API_TOKEN);
+    if (!accountId || !databaseId || !apiToken || isMaskedValue(accountId)) return;
+    try {
+      const resp = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ sql: "SELECT * FROM homepage_sections ORDER BY order_index ASC;" }),
+        },
+      );
+      if (!resp.ok) return;
+      const data: any = await resp.json();
+      let rows = data.result?.[0]?.results || data.result?.results || [];
+      if (!Array.isArray(rows) && Array.isArray(data.result)) rows = data.result;
+      if (Array.isArray(rows) && rows.length > 0) {
+        homepageSections = rows;
+        homepageSectionsLoadedAt = Date.now();
+      }
+    } catch (err) {
+      console.error("Failed to refresh homepage sections for HTML:", err);
+    } finally {
+      homepageSectionsInflight = null;
+    }
+  })();
+  return homepageSectionsInflight;
+}
+
+/**
+ * Cold instance: wait (max 1.5s) so the hero can be preloaded from the HTML.
+ * Warm instance: answer instantly from memory and refresh in the background.
+ */
+async function ensureHomepageSectionsForHtml(): Promise<void> {
+  const fresh = homepageSections.length > 0 && Date.now() - homepageSectionsLoadedAt < HOMEPAGE_SECTIONS_FRESH_MS;
+  if (fresh) return;
+  const refresh = refreshHomepageSections();
+  if (homepageSections.length > 0) { void refresh; return; }
+  await Promise.race([refresh, new Promise<void>((resolve) => setTimeout(resolve, 1500))]);
+}
+
+// The client runs the same URL through getOptimizedImageUrl(); these hosts are
+// rewritten there, so a preload of the raw URL would be a second, wasted download.
+const isPreloadableImageUrl = (value: unknown): value is string => {
+  const url = String(value || "").trim();
+  return /^https?:\/\//i.test(url)
+    && !/cloudinary\.com|\/upload\/|images\.unsplash\.com|drive\.google\.com|googleusercontent\.com/i.test(url);
+};
+const escapeAttr = (value: string) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+
 const { fetchEverythingFromD1, loadDb, saveDb } = createCoreDbService({
   getReviewTokens: () => reviewTokens,
   setReviewTokens: (v) => { reviewTokens = v; },
@@ -207,6 +276,7 @@ function buildState() {
     setD1Products: (v: any[]) => { d1_products = v; },
     fetchProductsFromD1: () => fetchRealD1ProductsIfConfigured(),
     fetchFeaturedProductsFromD1: () => fetchRealD1FeaturedProductsIfConfigured(),
+    fetchProductListFromD1: () => fetchRealD1ProductListIfConfigured(),
     fetchRealD1ProductsIfConfigured,
     getD1ApiCacheProducts: () => d1ApiCache.products,
     setD1ApiCacheProducts: (v: any) => { d1ApiCache.products = v; },
@@ -504,9 +574,9 @@ const app: Promise<express.Express> = (async () => {
           headInjections.push(`<link rel="preload" as="image" href="${imageUrl}" fetchpriority="high">`);
         }
       } else if (pathname === "/" || pathname === "") {
-        // If this server instance already has the homepage layout in memory,
-        // send it with the HTML so React can render the real Hero immediately.
-        // Cold instances still use the priority /api/homepage-sections request.
+        await ensureHomepageSectionsForHtml();
+        // Send the homepage layout with the HTML so React renders the real Hero
+        // on its first paint instead of waiting for /api/homepage-sections.
         const initialHomeSections = homepageSections
           .filter((section: any) => Number(section?.is_visible) === 1)
           .sort((a: any, b: any) => Number(a.order_index || 0) - Number(b.order_index || 0));
@@ -514,9 +584,15 @@ const app: Promise<express.Express> = (async () => {
           const json = JSON.stringify(initialHomeSections).replace(/</g, "\\u003c");
           headInjections.push(`<script>window.__INITIAL_HOMEPAGE_SECTIONS__=${json};</script>`);
           const hero = initialHomeSections.find((section: any) => section?.type === "hero" && section?.image_url);
-          if (hero?.image_url && /r2\.dev\//i.test(String(hero.image_url)) && /^https?:\/\//i.test(String(hero.image_url))) {
-            const imageUrl = String(hero.image_url).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-            headInjections.push(`<link rel="preload" as="image" href="${imageUrl}" fetchpriority="high">`);
+          if (hero && isPreloadableImageUrl(hero.image_url)) {
+            const raw = String(hero.image_url).trim();
+            const imageUrl = escapeAttr(raw);
+            try {
+              // Plain (non-CORS) preconnect: <img> requests are not CORS requests,
+              // so a `crossorigin` preconnect opens a connection the image can't reuse.
+              headInjections.push(`<link rel="preconnect" href="${escapeAttr(new URL(raw).origin)}">`);
+            } catch { /* malformed URL: skip the hint, keep the preload */ }
+            headInjections.push(`<link rel="preload" as="image" href="${imageUrl}" fetchpriority="high" referrerpolicy="no-referrer">`);
           }
         }
       }

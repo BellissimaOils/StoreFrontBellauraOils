@@ -3,6 +3,8 @@ import { useParams, useLocation } from "react-router-dom";
 import { CATEGORIES } from "./constants";
 import { useLanguage } from "../context/LanguageContext";
 import { useProducts } from "../context/ProductContext";
+import { hasCategoryMatch, getCategoryTargets } from "../lib/categoryMatch";
+import { useSectionProducts } from "../lib/useSectionProducts";
 import { getProductSlug, LivePack } from "../types";
 import ProductCard from "./ProductCard";
 import LivePacksSection from "./LivePacksSection";
@@ -28,7 +30,7 @@ import { normalizeLinkUrl } from "../lib/urlUtils";
 import {
   resolvePath,
   collectSectionPaths,
-  collectProductSlugs,
+  CANONICAL_CATEGORY_PATHS,
 } from "../lib/canonicalRoutes";
 import { resolvePageSeo, findSectionForPath } from "../lib/seoContent";
 import { serverRenderedSeo } from "../lib/ssrSeo";
@@ -46,77 +48,8 @@ import { SITE_ORIGIN } from "../lib/siteUrl";
 // It used to double as that test, so any slug that happened to fuzzy-match a
 // product's text conjured up a category page - /body, /face, /general and
 // /oil all rendered invented pages that nobody had created.
-function hasCategoryMatch(p: any, targetCats: string[]) {
-  if (!p) return false;
-  const catStr = String(p.category || "").toLowerCase();
-  const nameStr = String(p.name || "").toLowerCase();
-  const nameEnStr = String(p.name_en || "").toLowerCase();
-  const displaySec = String(p.displaySection || p.display_section || "").toLowerCase();
-  const pIdStr = String(p.id || "").toLowerCase();
-
-  // If display_section is 'home', hide from all catalog pages (only shows on homepage swiper)
-  if (displaySec === "home") return false;
-
-  return targetCats.some((tc) => {
-    const target = tc.toLowerCase().trim();
-    if (!target) return false;
-    if (target === "all") return true;
-    
-    if (target === "products" || target === "ourproducts" || target === "our-products") {
-      if (displaySec === "packs") return false;
-      // Exclude packs even if they accidentally categorize them as Oils
-      if (catStr.includes("pack") || catStr.includes("bundle") || pIdStr.startsWith("pack-") || nameEnStr.includes("pack")) return false;
-      return catStr.includes("oil") || catStr === "oils" || catStr === "";
-    }
-    if (target === "skin")
-      return (
-        catStr.includes("skin") ||
-        catStr.includes("peau") ||
-        catStr.includes("بشرة") ||
-        catStr.includes("face") ||
-        catStr.includes("body") ||
-        catStr.includes("general") ||
-        nameStr.includes("بشرة") ||
-        nameEnStr.includes("skin") ||
-        nameEnStr.includes("face")
-      );
-    if (target === "hair" || target === "scalp")
-      return (
-        catStr.includes("hair") ||
-        catStr.includes("scalp") ||
-        catStr.includes("cheveux") ||
-        catStr.includes("شعر") ||
-        catStr.includes("فروة") ||
-        nameStr.includes("شعر") ||
-        nameEnStr.includes("hair") ||
-        nameEnStr.includes("scalp")
-      );
-    if (target === "oil" || target === "oils")
-      return catStr.includes("oil") || catStr.includes("زيوت") || catStr.includes("أويلز") || nameEnStr.includes("oil");
-    if (
-      target === "pack" ||
-      target === "packs" ||
-      target === "bundle" ||
-      target === "collection"
-    )
-      return (
-        catStr.includes("pack") ||
-        catStr.includes("bundle") ||
-        catStr.includes("باقة") ||
-        catStr.includes("مجموعة") ||
-        catStr.includes("مجموعات") ||
-        catStr.includes("collection") ||
-        displaySec === "packs" ||
-        pIdStr.startsWith("pack-") ||
-        nameEnStr.includes("pack") ||
-        nameStr.includes("باقة") ||
-        nameStr.includes("مجموعة") ||
-        nameStr.includes("مجموعات") ||
-        nameStr.includes("طقم")
-      );
-    return catStr === target || catStr.includes(target) || catStr.split(/[\s,-]+/).includes(target);
-  });
-}
+// hasCategoryMatch / getCategoryTargets now live in src/lib/categoryMatch.ts so the
+// server can apply the same rule and send this page only its own products.
 
 export default function CategoryPage() {
   const location = useLocation();
@@ -131,7 +64,9 @@ export default function CategoryPage() {
   const cleanId = rawId.toLowerCase().trim().replace(/\/+$/, "");
 
   const { t, language } = useLanguage();
-  const { products: allProducts, loading, storeSettings } = useProducts(true);
+  // Settings only. The full catalogue is NOT requested by section pages any more;
+  // this page loads just its own products through useSectionProducts below.
+  const { storeSettings } = useProducts();
   const cachedSections = getCachedSync<any>("/api/sections");
   const [sections, setSections] = useState<any[]>(
     cachedSections?.success ? cachedSections.sections : [],
@@ -270,15 +205,26 @@ export default function CategoryPage() {
     () => collectSectionPaths(sections, normalizeLinkUrl),
     [sections],
   );
-  const productSlugs = useMemo(
-    () => collectProductSlugs(allProducts, getProductSlug),
-    [allProducts],
-  );
+  // Product slugs are only needed for /product/<slug> URLs, which never reach
+  // this component (ProductDetail owns that route), so the catalogue is not needed here.
   const pathKind = resolvePath(location.pathname, {
     sectionPaths,
-    productSlugs,
-    dataReady: !loading && sectionsLoaded,
+    dataReady: sectionsLoaded,
   });
+
+  // Start fetching this section's products straight away for the built-in
+  // sections (in parallel with /api/sections). Admin-created sections wait until
+  // we know the slug is a real section, so an unknown URL never triggers a request.
+  const sectionSlug = cleanId || "products";
+  const isBuiltInSection = (CANONICAL_CATEGORY_PATHS as readonly string[]).includes(`/${cleanId}`);
+  const {
+    products: allProducts,
+    loaded: productsLoaded,
+  } = useSectionProducts(
+    sectionSlug,
+    !isLiveSection && (isBuiltInSection || (sectionsLoaded && pathKind === "section")),
+  );
+  const loading = !isLiveSection && !productsLoaded && pathKind !== "not-found" && pathKind !== "private";
 
   // Only block render on products loading (they're the page content).
   // Sections data (layout config / SEO) loads in the background — once it
@@ -331,7 +277,6 @@ export default function CategoryPage() {
   }
 
   let categoryName = "";
-  let products: any[] = [];
 
   if (
     !cleanId ||
@@ -343,10 +288,8 @@ export default function CategoryPage() {
   ) {
     categoryName =
       t("nav.products") || (language === "ar" ? "منتجاتنا" : "Our Products");
-    products = allProducts.filter((p) => hasCategoryMatch(p, [cleanId || "products"]));
   } else if (cleanId === "oils" || cleanId === "oil") {
     categoryName = language === "ar" ? "الزيوت الطبيعية" : language === "fr" ? "Huiles Naturelles" : "Natural Oils";
-    products = allProducts.filter((p) => hasCategoryMatch(p, ["oil", "oils"]));
   } else if (cleanId === "skin" || cleanId === "peau" || cleanId === "peaux") {
     const catTrans = t("categories.skin");
     categoryName =
@@ -355,7 +298,6 @@ export default function CategoryPage() {
         : language === "ar"
           ? "البشرة"
           : "Skin";
-    products = allProducts.filter((p) => hasCategoryMatch(p, ["skin"]));
   } else if (
     cleanId === "hair" ||
     cleanId === "hair-and-scalp" ||
@@ -368,9 +310,6 @@ export default function CategoryPage() {
       catTrans !== "categories.hair"
         ? catTrans
         : (language === "ar" ? "الشعر" : "Hair");
-    products = allProducts.filter((p) =>
-      hasCategoryMatch(p, ["hair", "scalp"]),
-    );
   } else if (
     cleanId === "packs" ||
     cleanId === "pack" ||
@@ -384,9 +323,6 @@ export default function CategoryPage() {
         : language === "ar"
           ? "المجموعات والباقات"
           : "Collection Packs";
-    products = allProducts.filter((p) =>
-      hasCategoryMatch(p, ["pack", "packs", "bundle", "collection"]),
-    );
   } else if (isLiveSection) {
     categoryName =
       language === "ar"
@@ -394,31 +330,27 @@ export default function CategoryPage() {
         : language === "fr"
         ? (currentSection?.title_fr || "Offres Live")
         : (currentSection?.title_en || "Live Packs");
-    products = allProducts.filter((p) =>
-      hasCategoryMatch(p, ["live", "livepack", "live-pack", "pack"]),
-    );
   } else {
     const category = CATEGORIES.find((c) => c.id.toLowerCase() === cleanId);
     if (category) {
       categoryName = t(`categories.${category.id}`);
-      products = allProducts.filter((p) =>
-        hasCategoryMatch(p, [category.name, category.id]),
-      );
+    } else if (cleanId && cleanId !== "products") {
+      categoryName = cleanId
+        .split("-")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
     } else {
-      const matched = allProducts.filter((p) => hasCategoryMatch(p, [cleanId]));
-      if (cleanId && cleanId !== "products") {
-        categoryName = cleanId
-          .split("-")
-          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-          .join(" ");
-      } else {
-        categoryName =
-          t("nav.products") ||
-          (language === "ar" ? "منتجاتنا" : "Our Products");
-      }
-      products = matched;
+      categoryName =
+        t("nav.products") ||
+        (language === "ar" ? "منتجاتنا" : "Our Products");
     }
   }
+
+  // Same rule as before, shared with the server (src/lib/categoryMatch.ts). The
+  // server already filtered by it, so this just keeps the page correct if a
+  // list ever arrives from the in-memory fallback.
+  const categoryTargets = getCategoryTargets(cleanId, isLiveSection);
+  const products: any[] = allProducts.filter((p) => hasCategoryMatch(p, categoryTargets));
 
   // Generated fallback title/description — used only when the admin hasn't
   // set a custom SEO title/description for this section in Admin > SEO.

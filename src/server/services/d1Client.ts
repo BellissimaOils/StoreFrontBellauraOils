@@ -437,7 +437,7 @@ export async function fetchRealD1FeaturedProductsIfConfigured(): Promise<any[] |
           sql: `SELECT p.product_nbr, p.name, p.name_en, p.price, p.discount_applicable,
             p.discount_price, p.available, p.size_ml, p.size_label, p.image_url,
             p.show_in_swiper, p.in_catalog, p.category, p.order_index, p.slug,
-            p.is_pack, p.pack_product_ids, p.show_size, pd.tag AS tag
+            p.is_pack, p.pack_product_ids, p.show_size, p.display_section, pd.tag AS tag
             FROM products p LEFT JOIN products_Data pd ON p.product_nbr = pd.product_id
             WHERE COALESCE(in_catalog, 1) = 1 AND COALESCE(available, 1) = 1
               AND COALESCE(show_in_swiper, 1) = 1
@@ -453,6 +453,53 @@ export async function fetchRealD1FeaturedProductsIfConfigured(): Promise<any[] |
     return Array.isArray(rows) ? rows : null;
   } catch (error) {
     console.error("Error fetching featured products from Cloudflare D1:", error);
+    return null;
+  }
+}
+
+// Section pages (/products, /skin, /hair-and-scalp, /packs, ...) only need the
+// card fields. The full catalogue query above reads every long text column of
+// every product AND first runs ensureD1OrdersTablesExist (extra round trips),
+// which is why the first section a visitor opened felt slow. This is a single
+// small query, shared by every section through a short server-side cache.
+export async function fetchRealD1ProductListIfConfigured(): Promise<any[] | null> {
+  const accountId = sanitizeCredentials(process.env.CLOUDFLARE_D1_ACCOUNT_ID);
+  const databaseId = sanitizeCredentials(process.env.CLOUDFLARE_D1_DATABASE_ID);
+  const apiToken = sanitizeCredentials(process.env.CLOUDFLARE_D1_API_TOKEN);
+  if (!accountId || !databaseId || !apiToken || isMaskedValue(accountId)) return null;
+
+  const run = async (withDisplaySection: boolean): Promise<any[] | null> => {
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sql: `SELECT p.product_nbr, p.name, p.name_en, p.price, p.discount_applicable,
+            p.discount_price, p.available, p.size_ml, p.size_label, p.image_url,
+            p.show_in_swiper, p.in_catalog, p.category, p.order_index, p.slug,
+            p.is_pack, p.pack_product_ids, p.show_size, p.sizes, p.benefits,
+            ${withDisplaySection ? "p.display_section," : ""} pd.tag AS tag
+            FROM products p LEFT JOIN products_Data pd ON p.product_nbr = pd.product_id
+            WHERE COALESCE(p.in_catalog, 1) = 1
+            ORDER BY p.order_index ASC, p.product_nbr ASC;`,
+        }),
+      },
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!data?.success) return null;
+    const result = data.result?.[0] || data.result || null;
+    const rows = Array.isArray(result?.results) ? result.results : result;
+    return Array.isArray(rows) ? rows : null;
+  };
+
+  try {
+    // If the products table has no display_section column, retry without it
+    // rather than failing the whole section page.
+    return (await run(true)) ?? (await run(false));
+  } catch (error) {
+    console.error("Error fetching product list from Cloudflare D1:", error);
     return null;
   }
 }

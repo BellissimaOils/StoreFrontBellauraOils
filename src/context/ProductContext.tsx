@@ -21,7 +21,7 @@ const ProductContext = createContext<ProductContextType>({
   fetchProducts: () => {}, fetchFeaturedProducts: () => {}, setProducts: () => {}, setStoreSettings: () => {},
 });
 /** Ratings keyed by lowercased product reference, as /api/reviews/summary returns them. */
-type RatingSummary = Record<string, { count: number; rating: string }>;
+export type RatingSummary = Record<string, { count: number; rating: string }>;
 
 /**
  * Copies each product's rating and review count out of the summary.
@@ -29,7 +29,7 @@ type RatingSummary = Record<string, { count: number; rating: string }>;
  * Reviews name their product by id or by name depending on how the review was
  * created, so every reference a product answers to is tried in turn.
  */
-function applyRatingSummary(list: any[], summary: RatingSummary | null): any[] {
+export function applyRatingSummary(list: any[], summary: RatingSummary | null): any[] {
   if (!summary || list.length === 0) return list;
   const lookup = (value: any) => {
     const key = String(value ?? '').toLowerCase().trim();
