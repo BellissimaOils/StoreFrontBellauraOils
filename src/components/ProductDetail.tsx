@@ -85,16 +85,6 @@ export default function ProductDetail() {
     }
   }, [id, product?.id]);
 
-  // Pixel: fire ViewContent once per product visit.
-  useEffect(() => {
-    if (!product?.id) return;
-    const price = parseFloat(String(product.price ?? "").replace(/[^\d.]/g, "")) || 0;
-    trackViewContent({
-      content_name: product.name_en || product.name || "",
-      value: price,
-      currency: "MAD",
-    });
-  }, [product?.id]);
 
   const displayProduct = useMemo(() => {
     if (!product) return undefined;
@@ -255,6 +245,27 @@ export default function ProductDetail() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isLightboxOpen]);
 
+  // First-party product_view and third-party Pixel view tracking.
+  // This MUST stay above every early return: hooks must be called unconditionally
+  // on every render. If this ran after the `if (loading)` return, navigating to
+  // a product while data was still fetching would produce a different hook count
+  // on the next render, causing React to throw "Rendered more hooks than during
+  // the previous render" — exactly the bug the user reported.
+  useEffect(() => {
+    if (!displayProduct?.id) return;
+    const rawNumeric = parseFloat(String(displayProduct.price || 0).replace(/[^\d.]/g, '')) || 0;
+    trackViewContent({
+      content_name: displayProduct.name || '',
+      value: rawNumeric,
+      currency: 'MAD',
+    });
+    tracker.track('product_view', {
+      productId: String(displayProduct.id),
+      productName: displayProduct.name || '',
+      unitPrice: rawNumeric,
+    });
+  }, [displayProduct?.id]);
+
   // A slug with leading/trailing dashes or consecutive dashes is structurally
   // invalid — getProductSlug() strips these, so no real product can ever have
   // one. Return 404 immediately on frame 1, before any product lookup or API
@@ -353,21 +364,8 @@ export default function ProductDetail() {
     navigate('/checkout');
   };
 
-  // First-party product_view and third-party Pixel view tracking
-  useEffect(() => {
-    if (!displayProduct?.id) return;
-    const rawNumeric = parseFloat(String(displayProduct.price || 0).replace(/[^\d.]/g, '')) || 0;
-    trackViewContent({
-      content_name: displayProduct.name || '',
-      value: rawNumeric,
-      currency: 'MAD',
-    });
-    tracker.track('product_view', {
-      productId: String(displayProduct.id),
-      productName: displayProduct.name || '',
-      unitPrice: rawNumeric,
-    });
-  }, [displayProduct?.id]);
+  // (product_view tracking useEffect was moved above the early returns to fix
+  //  the "Rendered more hooks than during the previous render" React error)
 
   // Helper to parse review images array
   const parseReviewImages = (imgVal: any): string[] => {
