@@ -40,11 +40,9 @@ export default function FeaturedProducts() {
     return isAvailable && inCatalog && isSwiperVisible && matchesSection;
   });
 
-  // Show 20 cards, then 20 more per click, instead of mounting the whole
-  // catalogue — every card carries an image request and its own animation.
-  // No resetKey: the layout toggle only restyles the same products, so
-  // collapsing back to 20 when someone switches grid/list would throw away
-  // however far they had already scrolled.
+  // Render the first four cards immediately, then reveal four more whenever
+  // the visitor approaches the end of the grid. This is client-side windowing;
+  // the shared catalog request remains unchanged.
   const { visible: visibleProducts, hasMore, showMore } = useIncrementalList(filteredProducts);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
 

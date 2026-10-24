@@ -238,21 +238,37 @@ export default function CategoryPage() {
   // when the visitor moves to a different category.
   const [visibleCount, setVisibleCount] = useState(PRODUCTS_PAGE_SIZE);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // Reset the list when navigating to a different category. Keep this separate
+  // from the observer effect so a route change cannot leave the list at a stale
+  // scroll depth or detach the observer permanently.
   useEffect(() => {
+    setVisibleCount(PRODUCTS_PAGE_SIZE);
+  }, [cleanId]);
+
+  useEffect(() => {
+    // On a cold navigation, this component initially renders its loading state
+    // before the sentinel exists. Re-run when loading finishes / catalog changes
+    // so the observer is attached after the grid is actually mounted.
+    if (loading) return;
     const sentinel = loadMoreSentinelRef.current;
     if (!sentinel || typeof IntersectionObserver === "undefined") return;
+
+    let scheduled = false;
     const observer = new IntersectionObserver((entries) => {
-      const entry = entries[0];
-      if (!entry?.isIntersecting) return;
+      if (!entries.some((entry) => entry.isIntersecting) || scheduled) return;
       const total = Number(sentinel.dataset.total || 0);
       const currentlyVisible = Number(sentinel.dataset.visible || 0);
       if (currentlyVisible < total) {
+        scheduled = true;
         setVisibleCount((current) => Math.min(current + PRODUCTS_PAGE_SIZE, total));
+        // Allow the next observer cycle after React has committed the new cards.
+        requestAnimationFrame(() => { scheduled = false; });
       }
     }, { rootMargin: "500px 0px", threshold: 0.01 });
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [visibleCount, cleanId]);
+  }, [visibleCount, cleanId, loading, allProducts.length]);
 
 
 
