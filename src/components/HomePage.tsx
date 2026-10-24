@@ -110,8 +110,8 @@ function HomePage() {
   const initialSource = Array.isArray(serverHomeSections)
     ? { success: true, sections: serverHomeSections }
     : cachedData;
-  const initialSections = (initialSource?.success && initialSource.sections)
-    ? cachedData.sections
+  const initialSections = (initialSource?.success && Array.isArray(initialSource.sections))
+    ? initialSource.sections
         .filter((s: any) => Number(s.is_visible) === 1)
         .sort((a: any, b: any) => a.order_index - b.order_index)
     : []; // Start empty if no cache, don't use DEFAULT_HERO which causes flashes
