@@ -13,10 +13,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
  *
  * Windowing here still fixes the part that actually hurts: instead of mounting
  * every ProductCard at once — each with its own image request, animation and
- * hover state — the grid mounts 20 and grows on demand.
+ * hover state — the grid mounts only four cards initially, then grows in small batches as the visitor reaches the end of the list.
  */
 
-export const PRODUCTS_PAGE_SIZE = 20;
+export const PRODUCTS_PAGE_SIZE = 4;
 
 export interface UseIncrementalListOptions {
   pageSize?: number;

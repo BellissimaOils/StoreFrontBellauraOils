@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import { CATEGORIES } from "./constants";
 import { useLanguage } from "../context/LanguageContext";
@@ -238,9 +238,22 @@ export default function CategoryPage() {
   // change the hook order between renders. Collapses back to the first page
   // when the visitor moves to a different category.
   const [visibleCount, setVisibleCount] = useState(PRODUCTS_PAGE_SIZE);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    setVisibleCount(PRODUCTS_PAGE_SIZE);
-  }, [cleanId]);
+    const sentinel = loadMoreSentinelRef.current;
+    if (!sentinel || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (!entry?.isIntersecting) return;
+      const total = Number(sentinel.dataset.total || 0);
+      const currentlyVisible = Number(sentinel.dataset.visible || 0);
+      if (currentlyVisible < total) {
+        setVisibleCount((current) => Math.min(current + PRODUCTS_PAGE_SIZE, total));
+      }
+    }, { rootMargin: "500px 0px", threshold: 0.01 });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [visibleCount, cleanId]);
 
 
 
@@ -623,6 +636,13 @@ export default function CategoryPage() {
                 )}
               </div>
 
+              <div
+                ref={loadMoreSentinelRef}
+                aria-hidden="true"
+                data-total={products.length}
+                data-visible={visibleProducts.length}
+                className="h-px w-full"
+              />
               <LoadMoreButton
                 onClick={showMoreProducts}
                 hasMore={hasMoreProducts}
