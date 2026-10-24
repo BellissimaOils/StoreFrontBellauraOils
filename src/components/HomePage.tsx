@@ -429,7 +429,11 @@ function HomePage() {
                     outside this panel so their backgrounds and edges stay crisp. */}
                 <div
                   className={heading || overlaySub ? "w-fit max-w-full" : "hidden"}
-                  style={overlay.text_bg_enabled && (heading || overlaySub) ? {
+                  style={heroReady && overlay.text_bg_enabled && (heading || overlaySub) ? {
+                    display: "inline-block",
+                    width: "fit-content",
+                    maxWidth: "100%",
+                    boxSizing: "border-box",
                     backgroundColor: `rgba(0,0,0,${1 - overlay.text_bg_transparency / 100})`,
                     backdropFilter: overlay.text_bg_blur > 0
                       ? `blur(${(overlay.text_bg_blur / 100) * 18}px)`

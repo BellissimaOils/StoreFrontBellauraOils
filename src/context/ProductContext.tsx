@@ -103,6 +103,16 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
     if (!productId) return;
     let active = true;
     setFailedProduct('');
+
+    // A direct product URL may already include its product in the initial HTML,
+    // or the user may navigate to a product already present in the shared state.
+    // In either case, don't block the product page on a redundant API request.
+    const alreadyAvailable = products.find(p => matchesProduct(p, productId));
+    if (alreadyAvailable) {
+      setResolvedProduct(productId);
+      return () => { active = false; };
+    }
+
     fetchWithCache(`/api/products/${encodeURIComponent(productId)}`).then(data => {
       if (!active) return;
       if (data?.success && data.product) {
