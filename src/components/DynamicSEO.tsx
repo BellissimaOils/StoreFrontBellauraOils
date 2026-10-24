@@ -2,6 +2,7 @@ import React from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Product } from '../types';
 import { SITE_ORIGIN, canonicalUrlFor } from '../lib/siteUrl';
+import { isGenericCatalogDescription, productMetaFallback } from '../lib/seoContent';
 
 interface DynamicSEOProps {
   product: Product;
@@ -22,10 +23,13 @@ export default function DynamicSEO({ product, language }: DynamicSEOProps) {
   // panel had no effect on the rendered page — every product fell back to
   // the same generic sousTitre/description text once the SPA hydrated,
   // which is what Google's JS-rendering crawler ultimately indexes.
-  const rawDescription = anyProd.seo_description
-    || anyProd[`sousTitre_${language}`]
-    || product.description
-    || "Discover our premium natural oils.";
+  const rawDescription = [
+    anyProd.seo_description,
+    anyProd[`sousTitre_${language}`],
+    product.description,
+  ].map((value) => typeof value === 'string' ? value.trim() : '')
+   .find((value) => value && !isGenericCatalogDescription(value))
+    || productMetaFallback(anyProd, language);
 
   // 1 & 2. Title and Description (Max 160 characters)
   const seoTitle = anyProd.seo_title || `${productName} | Bellaura Oils`;

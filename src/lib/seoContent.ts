@@ -207,6 +207,23 @@ function nonEmpty(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/** Detect legacy auto-generated catalog copy that was incorrectly stored as
+ * the SEO description for many unrelated products. */
+export function isGenericCatalogDescription(value: unknown): boolean {
+  const text = nonEmpty(value).toLowerCase().replace(/\s+/g, " ");
+  return !text ||
+    /a masterfully crafted premium addition of .+ designed with active ingredients to restore beauty\.?/.test(text) ||
+    text === "discover our premium natural oils.";
+}
+
+/** Useful product-specific fallback when legacy generic copy is encountered. */
+export function productMetaFallback(product: any, language: string): string {
+  const name = productDisplayName(product, language);
+  if (language === "ar") return `اكتشف ${name} من Bellaura Oils للعناية بالبشرة والشعر. اطّلع على تفاصيل المنتج وطريقة الاستخدام.`;
+  if (language === "fr") return `Découvrez ${name} chez Bellaura Oils. Consultez les détails du produit et les conseils d’utilisation.`;
+  return `Discover ${name} from Bellaura Oils. Explore product details and usage recommendations.`;
+}
+
 /** Finds the ROUTE_SEO / PREFIX_SEO entry for a path, if any. */
 export function routeSeoFor(pathname: string): RouteSeoEntry | null {
   const path = normalizePathname(pathname);
@@ -344,13 +361,18 @@ export function resolvePageSeo(input: ResolveSeoInput): ResolvedSeo {
       title = `${productDisplayName(product, language)} | ${BRAND}`;
       titleSource = "route";
     }
-    const adminDesc =
-      nonEmpty(product.seo_description) ||
-      nonEmpty(product[`sousTitre_${language}`]) ||
-      nonEmpty(product.description);
-    if (adminDesc) {
-      description = adminDesc;
-      descriptionSource = "product";
+    // Prefer genuine product-specific copy. Older catalog sync created the same
+    // promotional template for many products; ignore it even if it was saved in
+    // seo_description, so it cannot override a real subtitle/description.
+    const productDescriptions = [
+      product.seo_description,
+      product[`sousTitre_${language}`],
+      product.description,
+    ].map(nonEmpty).filter((candidate) => !isGenericCatalogDescription(candidate));
+    const productDesc = productDescriptions[0] || productMetaFallback(product, language);
+    if (productDesc) {
+      description = productDesc;
+      descriptionSource = productDescriptions.length ? "product" : "route";
     }
   } else {
     // 2. Section SEO, keyed on the canonical path. Scans every matching row for
