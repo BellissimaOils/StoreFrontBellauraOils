@@ -41,6 +41,15 @@ const FaqPage         = lazyRetry(() => import("./components/FaqPage"));
 const LeaveReviewPage = lazyRetry(() => import("./components/LeaveReviewPage"));
 const GeneralReviewPage = lazyRetry(() => import("./components/GeneralReviewPage"));
 
+// Reset the route-level error boundary when navigation changes. Without a
+// route key, one failed product render leaves the boundary permanently failed
+// until a full browser refresh, so every subsequent product click shows the
+// same full-page error even when the next route could render normally.
+function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation();
+  return <ChunkErrorBoundary key={pathname}>{children}</ChunkErrorBoundary>;
+}
+
 // Premium loading spinner shown while lazy chunks are fetching
 function LuxuryLoader() {
   return (
@@ -159,7 +168,7 @@ export default function App() {
 
               {/* Catches lazy page load failures after a deploy
                   (chunk filename no longer exists). Reloads once. */}
-              <ChunkErrorBoundary>
+              <RouteErrorBoundary>
                 <Suspense fallback={<LuxuryLoader />}>
                   <Routes>
                     {/* ── Customer routes ────────────────────────────── */}
@@ -185,7 +194,7 @@ export default function App() {
                     <Route path="*" element={<CategoryPage />} />
                   </Routes>
                 </Suspense>
-              </ChunkErrorBoundary>
+              </RouteErrorBoundary>
 
               <div className="print:hidden">
                 <Footer />
