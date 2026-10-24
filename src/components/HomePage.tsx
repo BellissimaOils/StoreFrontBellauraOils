@@ -350,7 +350,25 @@ function HomePage() {
             >
               <div
                 className="max-w-3xl"
-                style={{ textAlign: flex.textAlign, color: overlay.text_color }}
+                style={{
+                  textAlign: flex.textAlign,
+                  color: overlay.text_color,
+                  ...(overlay.text_bg_enabled
+                    ? {
+                        // backdrop-filter blurs the existing hero image only behind this panel;
+                        // the text and the image element itself remain unchanged.
+                        backgroundColor: `rgba(0,0,0,${1 - overlay.text_bg_transparency / 100})`,
+                        backdropFilter: overlay.text_bg_blur > 0
+                          ? `blur(${(overlay.text_bg_blur / 100) * 18}px)`
+                          : "none",
+                        WebkitBackdropFilter: overlay.text_bg_blur > 0
+                          ? `blur(${(overlay.text_bg_blur / 100) * 18}px)`
+                          : "none",
+                        padding: "clamp(12px, 2.2vw, 28px)",
+                        borderRadius: "10px",
+                      }
+                    : {}),
+                }}
                 dir={isAr ? "rtl" : "ltr"}
               >
                 {/*

@@ -99,6 +99,12 @@ export interface HeroOverlayConfig {
   text_color: string;
   /** Dark scrim behind the text, 0-100, for legibility over busy photos. */
   scrim: number;
+  /** Optional blurred translucent panel behind hero copy only. */
+  text_bg_enabled: boolean;
+  /** Backdrop blur strength behind the copy, 0-100. */
+  text_bg_blur: number;
+  /** Panel transparency, 0 = opaque, 100 = transparent. */
+  text_bg_transparency: number;
   /** Heading size multiplier in percent (50-160). */
   heading_scale: number;
   btn_bg: string;
@@ -189,6 +195,9 @@ export const DEFAULT_OVERLAY_CONFIG: HeroOverlayConfig = {
   valign: "middle",
   text_color: "#ffffff",
   scrim: 25,
+  text_bg_enabled: false,
+  text_bg_blur: 0,
+  text_bg_transparency: 35,
   heading_scale: 100,
   btn_bg: "#2c2520",
   btn_text: "#ffffff",
@@ -300,6 +309,9 @@ export function parseOverlayConfig(raw: unknown): HeroOverlayConfig {
     valign: (["top", "middle", "bottom"].includes(valign) ? valign : "middle") as OverlayVAlign,
     text_color: toStringValue(source.text_color, DEFAULT_OVERLAY_CONFIG.text_color),
     scrim: clamp(toNumber(source.scrim, DEFAULT_OVERLAY_CONFIG.scrim), 0, 100),
+    text_bg_enabled: source.text_bg_enabled === true || source.text_bg_enabled === 1 || source.text_bg_enabled === "1",
+    text_bg_blur: clamp(toNumber(source.text_bg_blur, DEFAULT_OVERLAY_CONFIG.text_bg_blur), 0, 100),
+    text_bg_transparency: clamp(toNumber(source.text_bg_transparency, DEFAULT_OVERLAY_CONFIG.text_bg_transparency), 0, 100),
     heading_scale: clamp(toNumber(source.heading_scale, 100), 50, 160),
     btn_bg: toStringValue(source.btn_bg, DEFAULT_OVERLAY_CONFIG.btn_bg),
     btn_text: toStringValue(source.btn_text, DEFAULT_OVERLAY_CONFIG.btn_text),
