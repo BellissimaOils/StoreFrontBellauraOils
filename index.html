@@ -24,16 +24,32 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
-    <!-- Default Social Preview (WhatsApp, Facebook, Twitter) - Home Hero Image -->
+    <!-- Default Social Preview (WhatsApp, Facebook, Twitter) - Home Hero Meta Image
+         NOTE: The server (server.ts) dynamically replaces og:title, og:description,
+         og:image, twitter:image, og:url, etc. at request time with the live page/product
+         details and images, so social crawlers (which never run JS) always see the real
+         page name and dynamic image.
+         The URL below is the dedicated meta image (Home_BellauraOils_Meta.jpg) specified
+         for social previews. -->
+    <meta name="description" content="اكتشف نقاء الزيوت الطبيعية المعصورة على البارد من Bellaura Oils للعناية الفائقة بالبشرة والشعر." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Bellaura Oils" />
+    <meta property="og:url" content="https://www.bellauraoils.com/" />
+    <meta property="og:locale" content="ar_MA" />
     <meta property="og:title" content="Bellaura Oils | زيوت طبيعية فاخرة للعناية بالبشرة والشعر" />
     <meta property="og:description" content="اكتشف نقاء الزيوت الطبيعية المعصورة على البارد من Bellaura Oils للعناية الفائقة بالبشرة والشعر." />
-    <meta property="og:image" content="https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/home.jpg" />
-    <meta property="og:image:secure_url" content="https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/home.jpg" />
+    <meta property="og:image" content="https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/Home_BellauraOils_Meta.jpg" />
+    <meta property="og:image:secure_url" content="https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/Home_BellauraOils_Meta.jpg" />
     <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Bellaura Oils - زيوت طبيعية فاخرة" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:image" content="https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/home.jpg" />
+    <meta name="twitter:site" content="@bellauraoils" />
+    <meta name="twitter:title" content="Bellaura Oils | زيوت طبيعية فاخرة للعناية بالبشرة والشعر" />
+    <meta name="twitter:description" content="اكتشف نقاء الزيوت الطبيعية المعصورة على البارد من Bellaura Oils للعناية الفائقة بالبشرة والشعر." />
+    <meta name="twitter:image" content="https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/Home_BellauraOils_Meta.jpg" />
+
 
     
     <!-- No hero preload. This used to preload

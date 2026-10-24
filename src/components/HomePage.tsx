@@ -32,7 +32,7 @@ import DeferredSection from "./DeferredSection";
 const CollectionSwiper = lazyRetry(() => import("./CollectionSwiper"));
 const HomeLivePacks = lazyRetry(() => import("./HomeLivePacks"));
 
-const DEFAULT_HOME_HERO_IMAGE = "https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/home.jpg";
+const DEFAULT_HOME_HERO_IMAGE = "https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/Home_BellauraOils_Meta.jpg";
 
 const DEFAULT_HERO = {
   id: "home_hero_fallback",
@@ -783,13 +783,8 @@ function HomePage() {
   const homeTitle = homeSeo.title;
   const homeDescription = homeSeo.description;
 
-  // Absolute URL of the hero image, for og:image and twitter:image.
-  const ogImageUrl = (() => {
-    const hero = sections.find((s: any) => s?.type === "hero" && s?.image_url);
-    const raw = String(hero?.image_url || DEFAULT_HOME_HERO_IMAGE).trim();
-    if (/^https?:\/\//i.test(raw)) return raw;
-    return absoluteUrl(raw);
-  })();
+  // Dedicated social sharing image for Open Graph and Twitter cards
+  const ogImageUrl = "https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/Home_BellauraOils_Meta.jpg";
 
   return (
     <div className="pt-[140px] lg:pt-24 bg-background-soft">

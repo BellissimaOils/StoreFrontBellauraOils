@@ -144,26 +144,24 @@ export default function DynamicSEO({ product, language }: DynamicSEOProps) {
       <meta property="og:url" content={canonicalUrl} />
       <meta property="og:site_name" content="Bellaura Oils" />
 
-      {/* 5. Twitter Cards. summary_large_image needs an actual image; without
-             one the card type is downgraded rather than left advertising a
-             picture that doesn't exist. */}
-      <meta name="twitter:card" content={imageUrl ? "summary_large_image" : "summary"} />
+      {/* 5. Twitter Cards */}
+      <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content={seoTitle} />
       <meta name="twitter:description" content={seoDescription} />
+      <meta name="twitter:image" content="https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/Home_BellauraOils_Meta.jpg" />
+
+      {/* Open Graph Meta Image */}
+      <meta property="og:image" content="https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/Home_BellauraOils_Meta.jpg" />
+      <meta property="og:image:secure_url" content="https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/Home_BellauraOils_Meta.jpg" />
+      <meta property="og:image:type" content="image/jpeg" />
+      <meta property="og:image:width" content="1200" />
+      <meta property="og:image:height" content="630" />
 
       {/* 6. JSON-LD Schema */}
       <script type="application/ld+json">
         {JSON.stringify(jsonLdSchema)}
       </script>
       </Helmet>
-      {/* Image tags only when there is an image. Kept in their own Helmet so
-          the block above never has to render a conditional child. */}
-      {imageUrl && (
-        <Helmet>
-          <meta property="og:image" content={imageUrl} />
-          <meta name="twitter:image" content={imageUrl} />
-        </Helmet>
-      )}
     </>
   );
 }

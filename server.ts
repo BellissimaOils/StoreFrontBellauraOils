@@ -596,7 +596,67 @@ const app: Promise<express.Express> = (async () => {
           }
         }
       }
+      // ── Social-preview Meta Tags (WhatsApp, Facebook, Twitter, Telegram, etc.) ────────
+      // WhatsApp and other social crawlers are bots: they never execute JS, so React /
+      // react-helmet-async never run for them. The HTML that leaves this function is the
+      // one they inspect.
+      //
+      // 1. Social Image: The user specified that Home_BellauraOils_Meta.jpg must ALWAYS
+      //    be used as the preview image for all shared links.
+      // 2. Text (Title & Description): Dynamically generated per page/product.
+      const META_IMAGE_URL = "https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/Home_BellauraOils_Meta.jpg";
+
+      const pageSeo = resolvePageSeo({
+        pathname,
+        language: "ar",
+        sections: siteSections,
+        product: initialProduct,
+        storeSettings,
+      });
+
+      const rawTitle = pageSeo.title || "Bellaura Oils | زيوت طبيعية فاخرة للعناية بالبشرة والشعر";
+      const rawDesc = pageSeo.description || "اكتشف نقاء الزيوت الطبيعية المعصورة على البارد من Bellaura Oils للعناية الفائقة بالبشرة والشعر.";
+
+      const cleanTitle = rawTitle.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      const cleanDesc = rawDesc.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      const truncatedDesc = cleanDesc.length > 160 ? cleanDesc.slice(0, 157).trim() + "..." : cleanDesc;
+
+      const canonicalUrl = absoluteUrl(pathname);
+      const isProduct = pathname.startsWith("/product/") && !!initialProduct;
+
+      const escapedTitle = escapeAttr(cleanTitle);
+      const escapedDesc = escapeAttr(truncatedDesc);
+      const escapedUrl = escapeAttr(canonicalUrl);
+      const escapedImg = escapeAttr(META_IMAGE_URL);
+
+      // 1. Title tag: <title>...</title>
+      html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${cleanTitle.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</title>`);
+
+      // 2. Meta Description tag
+      if (/<meta\s+name="description"/i.test(html)) {
+        html = html.replace(/(<meta\s+name="description"\s+content=")[^"]*(")/i, `$1${escapedDesc}$2`);
+      } else {
+        headInjections.push(`<meta name="description" content="${escapedDesc}">`);
+      }
+
+      // 3. Open Graph & Twitter Titles
+      html = html.replace(/(<meta\s+property="og:title"\s+content=")[^"]*(")/g, `$1${escapedTitle}$2`);
+      html = html.replace(/(<meta\s+name="twitter:title"\s+content=")[^"]*(")/g, `$1${escapedTitle}$2`);
+
+      // 4. Open Graph & Twitter Descriptions
+      html = html.replace(/(<meta\s+property="og:description"\s+content=")[^"]*(")/g, `$1${escapedDesc}$2`);
+      html = html.replace(/(<meta\s+name="twitter:description"\s+content=")[^"]*(")/g, `$1${escapedDesc}$2`);
+
+      // 5. Open Graph URL & Type
+      html = html.replace(/(<meta\s+property="og:url"\s+content=")[^"]*(")/g, `$1${escapedUrl}$2`);
+      html = html.replace(/(<meta\s+property="og:type"\s+content=")[^"]*(")/g, `$1${isProduct ? "product" : "website"}$2`);
+
+      // 6. Open Graph & Twitter Images (Always the designated Home_BellauraOils_Meta.jpg JPEG)
+      html = html.replace(/(<meta\s+property="og:image(?::secure_url)?"\s+content=")[^"]*(")/g, `$1${escapedImg}$2`);
+      html = html.replace(/(<meta\s+name="twitter:image"\s+content=")[^"]*(")/g, `$1${escapedImg}$2`);
+      html = html.replace(/(<meta\s+property="og:image:type"\s+content=")[^"]*(")/g, `$1image/jpeg$2`);
       if (headInjections.length) html = html.replace("</head>", `${headInjections.join("")}\n</head>`);
+
       res.type("html").send(html);
       } catch (error) { next(error); }
     });
