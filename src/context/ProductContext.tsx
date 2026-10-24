@@ -72,10 +72,30 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    fetchWithCache('/api/store-settings').then(data => {
-      if (active && data?.storeSettings) setStoreSettings(data.storeSettings);
-    }).catch(() => {});
-    return () => { active = false; };
+    let delayTimer: number | undefined;
+    const loadSettings = () => {
+      if (delayTimer !== undefined) window.clearTimeout(delayTimer);
+      fetchWithCache('/api/store-settings').then(data => {
+        if (active && data?.storeSettings) setStoreSettings(data.storeSettings);
+      }).catch(() => {});
+    };
+
+    // Do not let global settings compete with the Home Hero or a directly
+    // requested product's own data/image on the first network turn.
+    if (window.location.pathname === '/' && !document.querySelector('[data-home-hero-ready="true"]')) {
+      window.addEventListener('bellaura:hero-ready', loadSettings, { once: true });
+      delayTimer = window.setTimeout(loadSettings, 6000);
+    } else if (window.location.pathname.startsWith('/product/')) {
+      delayTimer = window.setTimeout(loadSettings, 1500);
+    } else {
+      loadSettings();
+    }
+
+    return () => {
+      active = false;
+      window.removeEventListener('bellaura:hero-ready', loadSettings);
+      if (delayTimer !== undefined) window.clearTimeout(delayTimer);
+    };
   }, []);
 
   // A direct product visit requests one product, regardless of the catalog size.

@@ -13,6 +13,7 @@ import {
   BrowserRouter as Router,
   Routes,
   Route,
+  useLocation,
 } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import Navbar from "./components/Navbar";
@@ -24,13 +25,13 @@ import PixelTracker from "./components/PixelTracker";
 import FloatingCart from "./components/FloatingCart";
 import BackToTopButton from "./components/BackToTopButton";
 import Footer from "./components/Footer";
+import HomePage from "./components/HomePage";
 
 // Each route downloads its own page code, including direct product visits.
 const ProductDetail = lazyRetry(() => import("./components/ProductDetail"));
 
 // All other pages are lazy-loaded per route so each visitor only downloads
 // the code for the page they actually visit.
-const HomePage        = lazyRetry(() => import("./components/HomePage"));
 const CategoryPage    = lazyRetry(() => import("./components/CategoryPage"));
 const CheckoutPage    = lazyRetry(() => import("./CheckoutPage"));
 const ReviewsPage     = lazyRetry(() => import("./components/ReviewsPage"));
@@ -57,59 +58,86 @@ function LuxuryLoader() {
   );
 }
 
-export default function App() {
-  // Keep the Home route's first render/network work ahead of every other page.
-  // Once the initial view has settled, warm one non-home route chunk at a time
-  // during idle periods so navigation feels instant without competing with Home.
+/**
+ * Warm secondary route chunks only after the current route has had a chance to
+ * render. On Home, the Hero image is the gate: no other route chunk competes
+ * with the Hero for network bandwidth before that image has loaded. The
+ * browser still downloads one chunk at a time during idle periods.
+ */
+function BackgroundRoutePreloader() {
+  const { pathname } = useLocation();
+
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
     let idleId: number | undefined;
-    const preloads: Array<() => Promise<unknown>> = [
-      () => import("./components/CategoryPage"),
-      () => import("./components/ReviewsPage"),
-      () => import("./components/AboutPage"),
-      () => import("./components/FaqPage"),
-      () => import("./CheckoutPage"),
-      () => import("./components/LeaveReviewPage"),
-      () => import("./components/GeneralReviewPage"),
-      () => import("./components/ProductDetail"),
-    ];
+    let timerId: number | undefined;
+    let queue: Array<() => Promise<unknown>> = [];
     let index = 0;
+    let started = false;
 
-    const scheduleNext = () => {
-      if (cancelled || index >= preloads.length) return;
-      const runOne = () => {
-        idleId = undefined;
-        if (cancelled || index >= preloads.length) return;
-        const load = preloads[index++];
-        // Ignore background preload failures; lazyRetry handles actual navigation.
-        void load().catch(() => {}).finally(() => {
-          if (!cancelled) timer = setTimeout(scheduleNext, 650);
-        });
-      };
+    const routeImports: Array<[string, () => Promise<unknown>]> = [
+      ["/products", () => import("./components/CategoryPage")],
+      ["/product/", () => import("./components/ProductDetail")],
+      ["/checkout", () => import("./CheckoutPage")],
+      ["/reviews", () => import("./components/ReviewsPage")],
+      ["/about", () => import("./components/AboutPage")],
+      ["/faq", () => import("./components/FaqPage")],
+      ["/review/", () => import("./components/LeaveReviewPage")],
+      ["/leave-a-review", () => import("./components/GeneralReviewPage")],
+    ];
+    queue = routeImports.filter(([path]) => {
+      if (path === "/products") return !["/products", "/skin", "/hair-and-scalp", "/packs"].includes(pathname);
+      return !pathname.startsWith(path);
+    }).map(([, load]) => load);
+
+    const runNext = () => {
+      if (cancelled || index >= queue.length) return;
+      const load = queue[index++];
+      void load().catch(() => {}).finally(() => {
+        if (cancelled) return;
+        if ("requestIdleCallback" in window) {
+          idleId = window.requestIdleCallback(runNext, { timeout: 2500 });
+        } else {
+          timerId = window.setTimeout(runNext, 700);
+        }
+      });
+    };
+
+    const start = () => {
+      if (cancelled || started) return;
+      started = true;
+      if (timerId !== undefined) window.clearTimeout(timerId);
       if ("requestIdleCallback" in window) {
-        idleId = window.requestIdleCallback(runOne, { timeout: 4000 });
+        idleId = window.requestIdleCallback(runNext, { timeout: 2500 });
       } else {
-        timer = setTimeout(runOne, 900);
+        timerId = window.setTimeout(runNext, 1200);
       }
     };
 
-    // Give Home's hero, text and first data requests a head start.
-    timer = setTimeout(scheduleNext, 2200);
+    if (pathname === "/" || pathname === "") {
+      window.addEventListener("bellaura:hero-ready", start, { once: true });
+      // Do not let a missing/broken hero permanently prevent useful preloading.
+      timerId = window.setTimeout(start, 6000);
+    } else {
+      // On direct product links, give the product content/image the first turn.
+      timerId = window.setTimeout(start, pathname.startsWith("/product/") ? 3500 : 1800);
+    }
+
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
-      if (idleId !== undefined && "cancelIdleCallback" in window) {
-        window.cancelIdleCallback(idleId);
-      }
+      window.removeEventListener("bellaura:hero-ready", start);
+      if (timerId !== undefined) window.clearTimeout(timerId);
+      if (idleId !== undefined && "cancelIdleCallback" in window) window.cancelIdleCallback(idleId);
     };
-  }, []);
+  }, [pathname]);
 
+  return null;
+}
+
+export default function App() {
   return (
     <Router>
+      <BackgroundRoutePreloader />
       <ScrollToTop />
       <PixelTracker />
       <LanguageProvider>

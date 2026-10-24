@@ -463,16 +463,22 @@ const app: Promise<express.Express> = (async () => {
       let initialProduct: any = null;
       let productDataReady = false;
       if (pathname.startsWith("/product/")) {
-        // Resolve only the product data needed for a direct landing. Never load
-        // home sections, cities, coupons or reviews before returning this HTML.
-        const rows = await fetchRealD1ProductsIfConfigured();
-        if (rows !== null) {
-          d1_products = rows;
-          products = rows.map(mapD1RowToProductSchema).filter(p => p && Number(p.in_catalog) !== 0);
-          d1ApiCache.products = { data: products, timestamp: Date.now() };
-          productDataReady = true;
+        // Resolve from the warm in-memory catalog first so a direct product URL
+        // can return its HTML/image preload without waiting on a redundant D1
+        // round trip. Only cold instances refresh the catalog before resolving.
+        const requestedProductId = decodeURIComponent(pathname.split("/")[2] || "");
+        initialProduct = products.find(p => matchesProduct(p, requestedProductId));
+        productDataReady = products.length > 0;
+        if (!initialProduct || !productDataReady) {
+          const rows = await fetchRealD1ProductsIfConfigured();
+          if (rows !== null) {
+            d1_products = rows;
+            products = rows.map(mapD1RowToProductSchema).filter(p => p && Number(p.in_catalog) !== 0);
+            d1ApiCache.products = { data: products, timestamp: Date.now() };
+            productDataReady = true;
+            initialProduct = products.find(p => matchesProduct(p, requestedProductId));
+          }
         }
-        initialProduct = products.find(p => matchesProduct(p, decodeURIComponent(pathname.split("/")[2] || "")));
       }
       let sectionPaths = collectSectionPaths(siteSections, normalizeSectionLinkServer);
       let pathKind = resolvePath(pathname, {
@@ -487,10 +493,34 @@ const app: Promise<express.Express> = (async () => {
       if (pathKind === "not-found") res.status(404);
       res.setHeader("Cache-Control", "no-cache, must-revalidate");
       let html = await fs.promises.readFile(htmlPath, "utf8");
+      const headInjections: string[] = [];
       if (initialProduct) {
         const json = JSON.stringify(initialProduct).replace(/</g, "\\u003c");
-        html = html.replace("</head>", `<script>window.__INITIAL_PRODUCT__=${json};</script></head>`);
+        headInjections.push(`<script>window.__INITIAL_PRODUCT__=${json};</script>`);
+        // A direct product landing already knows its product before React starts.
+        // Hint the browser about the primary product image without fetching the catalog.
+        if (initialProduct.image && /r2\.dev\//i.test(String(initialProduct.image)) && /^https?:\/\//i.test(String(initialProduct.image))) {
+          const imageUrl = String(initialProduct.image).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+          headInjections.push(`<link rel="preload" as="image" href="${imageUrl}" fetchpriority="high">`);
+        }
+      } else if (pathname === "/" || pathname === "") {
+        // If this server instance already has the homepage layout in memory,
+        // send it with the HTML so React can render the real Hero immediately.
+        // Cold instances still use the priority /api/homepage-sections request.
+        const initialHomeSections = homepageSections
+          .filter((section: any) => Number(section?.is_visible) === 1)
+          .sort((a: any, b: any) => Number(a.order_index || 0) - Number(b.order_index || 0));
+        if (initialHomeSections.length) {
+          const json = JSON.stringify(initialHomeSections).replace(/</g, "\\u003c");
+          headInjections.push(`<script>window.__INITIAL_HOMEPAGE_SECTIONS__=${json};</script>`);
+          const hero = initialHomeSections.find((section: any) => section?.type === "hero" && section?.image_url);
+          if (hero?.image_url && /r2\.dev\//i.test(String(hero.image_url)) && /^https?:\/\//i.test(String(hero.image_url))) {
+            const imageUrl = String(hero.image_url).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+            headInjections.push(`<link rel="preload" as="image" href="${imageUrl}" fetchpriority="high">`);
+          }
+        }
       }
+      if (headInjections.length) html = html.replace("</head>", `${headInjections.join("")}\n</head>`);
       res.type("html").send(html);
       } catch (error) { next(error); }
     });

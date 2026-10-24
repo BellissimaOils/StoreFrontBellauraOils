@@ -21,32 +21,50 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let isMounted = true;
+    let fallbackTimer: number | undefined;
+    let settingsRequested = false;
 
-    // Language settings must not require downloading the catalog.
-    fetchWithCache('/api/store-settings')
-      .then(data => {
-        if (!isMounted || !data?.storeSettings) return;
-        const { storeSettings } = data;
-        // Explicit boolean check: undefined means not configured, treat as disabled
-        const arEnabled = storeSettings.enableAr !== false;
-        const enEnabled = storeSettings.enableEn === true;
-        const frEnabled = storeSettings.enableFr === true;
+    const loadLanguageSettings = () => {
+      if (settingsRequested) return;
+      settingsRequested = true;
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+      fetchWithCache('/api/store-settings')
+        .then(data => {
+          if (!isMounted || !data?.storeSettings) return;
+          const { storeSettings } = data;
+          // Explicit boolean check: undefined means not configured, treat as disabled
+          const arEnabled = storeSettings.enableAr !== false;
+          const enEnabled = storeSettings.enableEn === true;
+          const frEnabled = storeSettings.enableFr === true;
 
-        const isCurrentLangEnabled =
-          (language === 'ar' && arEnabled) ||
-          (language === 'en' && enEnabled) ||
-          (language === 'fr' && frEnabled);
+          const isCurrentLangEnabled =
+            (language === 'ar' && arEnabled) ||
+            (language === 'en' && enEnabled) ||
+            (language === 'fr' && frEnabled);
 
-        if (!isCurrentLangEnabled) {
-          // Redirect to first available language
-          if (arEnabled) setLanguage('ar');
-          else if (enEnabled) setLanguage('en');
-          else if (frEnabled) setLanguage('fr');
-          else setLanguage('ar');
-        }
-      }).catch(() => {});
+          if (!isCurrentLangEnabled) {
+            if (arEnabled) setLanguage('ar');
+            else if (enEnabled) setLanguage('en');
+            else if (frEnabled) setLanguage('fr');
+            else setLanguage('ar');
+          }
+        }).catch(() => {});
+    };
 
-    return () => { isMounted = false; };
+    // Home's Hero image is the first network priority. Settings can wait until
+    // that critical image has loaded; all other routes keep the normal behavior.
+    if (window.location.pathname === '/' && !document.querySelector('[data-home-hero-ready="true"]')) {
+      window.addEventListener('bellaura:hero-ready', loadLanguageSettings, { once: true });
+      fallbackTimer = window.setTimeout(loadLanguageSettings, 6000);
+    } else {
+      loadLanguageSettings();
+    }
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('bellaura:hero-ready', loadLanguageSettings);
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+    };
   }, [language]);
 
   useEffect(() => {

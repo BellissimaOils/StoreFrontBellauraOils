@@ -60,7 +60,7 @@ const ProgressiveImage = ({ src, alt, className, imgClassName, wrapClassName, lo
       setIsLoaded(true);
       onReady?.();
     }
-  }, [src, onReady]);
+  }, [src]);
 
   // wrapClassName targets the wrapper div (used for transform:scale zoom so
   // it stays off the <img> element and doesn't interfere with object-position).
@@ -105,15 +105,20 @@ function HomePage() {
   const isFr = language === "fr";
   const isEn = language === "en";
 
+  const serverHomeSections = (window as any).__INITIAL_HOMEPAGE_SECTIONS__;
   const cachedData = getCachedSync<any>("/api/homepage-sections");
-  const initialSections = (cachedData?.success && cachedData.sections)
+  const initialSource = Array.isArray(serverHomeSections)
+    ? { success: true, sections: serverHomeSections }
+    : cachedData;
+  const initialSections = (initialSource?.success && initialSource.sections)
     ? cachedData.sections
         .filter((s: any) => Number(s.is_visible) === 1)
         .sort((a: any, b: any) => a.order_index - b.order_index)
     : []; // Start empty if no cache, don't use DEFAULT_HERO which causes flashes
 
   const [sections, setSections] = React.useState<any[]>(initialSections);
-  const [hasFetched, setHasFetched] = React.useState(Boolean(cachedData));
+  const [hasFetched, setHasFetched] = React.useState(Boolean(initialSource));
+  const [heroReady, setHeroReady] = React.useState(false);
 
   // Separate from the homepage content-block sections above - this is the
   // nav/SEO sections list (AdminSEO.tsx -> Section SEO tab), used to
@@ -135,36 +140,75 @@ function HomePage() {
 
 
   React.useEffect(() => {
-    fetchWithCache("/api/homepage-sections")
-      .then((data) => {
-        if (data && data.success && data.sections) {
-          const visible = data.sections
-              .filter((s: any) => Number(s.is_visible) === 1)
-              .sort((a: any, b: any) => a.order_index - b.order_index);
-          setSections(visible.length > 0 ? visible : [DEFAULT_HERO]);
-        } else if (sections.length === 0) {
-          setSections([DEFAULT_HERO]);
-        }
-        setHasFetched(true);
-      })
-      .catch((err) => {
-        console.error(err);
-        if (sections.length === 0) setSections([DEFAULT_HERO]);
-        setHasFetched(true);
-      });
+    let active = true;
+    let fallbackTimer: number | undefined;
+    const loadHomepageSections = () => {
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+      fetchWithCache("/api/homepage-sections")
+        .then((data) => {
+          if (!active) return;
+          if (data && data.success && data.sections) {
+            const visible = data.sections
+                .filter((s: any) => Number(s.is_visible) === 1)
+                .sort((a: any, b: any) => a.order_index - b.order_index);
+            const hero = visible.find((section: any) => section?.type === "hero" && section?.image_url);
+            if (hero?.image_url && typeof document !== "undefined") {
+              const rawHeroUrl = getOptimizedImageUrl(hero.image_url, "eco");
+              if (rawHeroUrl) {
+                let preload = document.querySelector<HTMLLinkElement>('link[data-bellaura-hero-preload="true"]');
+                if (!preload) {
+                  preload = document.createElement("link");
+                  preload.rel = "preload";
+                  preload.as = "image";
+                  preload.setAttribute("data-bellaura-hero-preload", "true");
+                  document.head.appendChild(preload);
+                }
+                preload.href = rawHeroUrl;
+                preload.setAttribute("fetchpriority", "high");
+              }
+            }
+            setSections(visible.length > 0 ? visible : [DEFAULT_HERO]);
+          } else if (sections.length === 0) {
+            setSections([DEFAULT_HERO]);
+          }
+          setHasFetched(true);
+        })
+        .catch((err) => {
+          if (!active) return;
+          console.error(err);
+          if (sections.length === 0) setSections([DEFAULT_HERO]);
+          setHasFetched(true);
+        });
+    };
+
+    // If the server injected the real Home sections, render its Hero first and
+    // defer the refresh. On a cold server, this request is the critical path and
+    // starts immediately so the real Hero URL is discovered as soon as possible.
+    if (Array.isArray(serverHomeSections) && serverHomeSections.length > 0) {
+      window.addEventListener("bellaura:hero-ready", loadHomepageSections, { once: true });
+      fallbackTimer = window.setTimeout(loadHomepageSections, 6000);
+    } else {
+      loadHomepageSections();
+    }
+
+    return () => {
+      active = false;
+      window.removeEventListener("bellaura:hero-ready", loadHomepageSections);
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+    };
   }, []);
 
   const hasCollection = sections.some(s => s.type === 'collection');
   // Start the small featured-products request as soon as Home knows the
   // collection exists. Waiting for the hero image serialized independent work.
   React.useEffect(() => {
-    if (!hasCollection) return;
+    if (!hasCollection || !heroReady) return;
     fetchFeaturedProducts();
     void import('./CollectionSwiper').catch(() => {});
-  }, [hasCollection, fetchFeaturedProducts]);
+  }, [hasCollection, heroReady, fetchFeaturedProducts]);
 
   React.useEffect(() => {
-    if (!hasCollection || featuredProducts.length === 0) return;
+    if (!heroReady || !hasCollection || featuredProducts.length === 0) return;
     featuredProducts.filter(isCollectionProduct).slice(0, 4).forEach((product, index) => {
       const src = getOptimizedImageUrl(product.image, 'eco', 500);
       if (!src || warmedImages.current.has(src)) return;
@@ -175,7 +219,7 @@ function HomePage() {
       warmedImages.current.set(src, image);
       image.src = src;
     });
-  }, [featuredProducts, hasCollection]);
+  }, [featuredProducts, hasCollection, heroReady]);
 
   const renderSection = (s: any, idx: number) => {
     const isEn = language === "en";
@@ -223,10 +267,15 @@ function HomePage() {
     }
     const imgClasses = `w-full h-full ${objectFitClass} ${objectAlignClass}`;
 
+    const firstHeroIndex = sections.findIndex((section: any) => section.type === "hero");
     const firstImageSectionIndex = sections.findIndex(
-      (s: any) => s.type === "hero" || Boolean(s.image_url),
+      (section: any) => Boolean(section.image_url),
     );
-    const isFirstImage = idx === (firstImageSectionIndex !== -1 ? firstImageSectionIndex : 0);
+    // The Hero always wins the image priority race, even if an admin has placed
+    // an image/text section before it in the homepage order.
+    const isFirstImage = firstHeroIndex !== -1
+      ? idx === firstHeroIndex
+      : idx === (firstImageSectionIndex !== -1 ? firstImageSectionIndex : 0);
 
     if (s.type === "hero") {
       const optimizedHeroUrl = getOptimizedImageUrl(s.image_url, "eco");
@@ -327,6 +376,14 @@ function HomePage() {
               loading={isFirstImage ? "eager" : "lazy"}
               fetchPriority={isFirstImage ? "high" : "low"}
               decoding={isFirstImage ? "sync" : "async"}
+              onReady={() => {
+                if (s.type === "hero" && typeof window !== "undefined") {
+                  const heroSection = document.querySelector(`.${scope}`);
+                  heroSection?.setAttribute("data-home-hero-ready", "true");
+                  setHeroReady(true);
+                  window.dispatchEvent(new Event("bellaura:hero-ready"));
+                }
+              }}
             />
           </div>
 
@@ -759,9 +816,9 @@ function HomePage() {
       ) : sections.length > 0 ? (
         <div className="space-y-0">
           {sections.map((s, idx) => (
-            <DeferredSection key={s.id || idx} eager={idx < 2}
+            <DeferredSection key={s.id || idx} eager={idx < 2 || s.type === 'hero'}
               preloadDistance={s.type === 'collection' ? 1200 : 300}
-              onApproach={s.type === 'collection' ? fetchFeaturedProducts : undefined}>
+              onApproach={s.type === 'collection' && heroReady ? fetchFeaturedProducts : undefined}>
               {() => <React.Suspense fallback={<div className="min-h-[300px] bg-background-soft animate-pulse" />}>
                 {renderSection(s, idx)}
               </React.Suspense>}

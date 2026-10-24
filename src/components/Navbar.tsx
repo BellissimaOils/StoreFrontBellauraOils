@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { ShoppingBag, Globe } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -80,33 +80,12 @@ export default function Navbar() {
 
   const isHome = location.pathname === '/';
 
-  const prefetchedRoutes = React.useRef(new Set<string>());
   const handlePrefetchRoute = (path: string) => {
-    const normalized = normalizePath(path);
-    if (prefetchedRoutes.current.has(normalized)) return;
-    prefetchedRoutes.current.add(normalized);
-
-    // Pointer/touch intent is the highest-priority preload signal: when a
-    // customer is about to open a section, fetch its chunk before the click.
-    let load: Promise<unknown> | undefined;
-    if (['/skin', '/hair-and-scalp', '/products', '/packs'].includes(normalized) || normalized.startsWith('/category')) {
-      load = import('./CategoryPage');
-    } else if (normalized === '/reviews') {
-      load = import('./ReviewsPage');
-    } else if (normalized === '/about') {
-      load = import('./AboutPage');
-    } else if (normalized === '/faq') {
-      load = import('./FaqPage');
-    } else if (normalized === '/checkout') {
-      load = import('../CheckoutPage');
-    } else if (normalized === '/leave-a-review') {
-      load = import('./GeneralReviewPage');
-    } else if (normalized.startsWith('/review/')) {
-      load = import('./LeaveReviewPage');
-    } else if (normalized.startsWith('/product/')) {
-      load = import('./ProductDetail');
+    if (path === '/skin' || path === '/hair-and-scalp' || path === '/products' || path.startsWith('/category')) {
+      import('./CategoryPage');
+    } else if (path === '/reviews') {
+      import('./ReviewsPage');
     }
-    void load?.catch(() => { prefetchedRoutes.current.delete(normalized); });
   };
 
   const allLanguages: { code: Language; label: string }[] = [
@@ -134,24 +113,44 @@ export default function Navbar() {
   const [fetchFailed, setFetchFailed] = useState(false);
 
   useEffect(() => {
-    // Use fetchWithCache instead of raw fetch so the shared in-memory cache
-    // is populated. When CategoryPage mounts after navigation, its
-    // getCachedSync('/api/sections') call now finds valid data immediately,
-    // making sectionsLoaded start true and rendering the page without waiting.
-    fetchWithCache('/api/sections')
-      .then(data => {
-        const links = parseNavLinks(data, language);
-        if (links !== null) {
-          setDynamicNavLinks(links);
-          setFetchFailed(false);
-        } else {
+    let active = true;
+    let delayTimer: number | undefined;
+    const loadNavSections = () => {
+      if (delayTimer !== undefined) window.clearTimeout(delayTimer);
+      fetchWithCache('/api/sections')
+        .then(data => {
+          if (!active) return;
+          const links = parseNavLinks(data, language);
+          if (links !== null) {
+            setDynamicNavLinks(links);
+            setFetchFailed(false);
+          } else {
+            setFetchFailed(true);
+          }
+        })
+        .catch((err) => {
+          if (!active) return;
+          console.error(err);
           setFetchFailed(true);
-        }
-      })
-      .catch((err) => {
-        console.error(err);
-        setFetchFailed(true);
-      });
+        });
+    };
+
+    // Global navigation metadata is secondary to the Hero on Home and to the
+    // requested product on direct product URLs.
+    if (window.location.pathname === '/' && !document.querySelector('[data-home-hero-ready="true"]')) {
+      window.addEventListener('bellaura:hero-ready', loadNavSections, { once: true });
+      delayTimer = window.setTimeout(loadNavSections, 6000);
+    } else if (window.location.pathname.startsWith('/product/')) {
+      delayTimer = window.setTimeout(loadNavSections, 1500);
+    } else {
+      loadNavSections();
+    }
+
+    return () => {
+      active = false;
+      window.removeEventListener('bellaura:hero-ready', loadNavSections);
+      if (delayTimer !== undefined) window.clearTimeout(delayTimer);
+    };
   }, [language]);
 
   // Only show the links the admin configured — never show hardcoded fallback links.
@@ -309,7 +308,6 @@ export default function Navbar() {
                       to={link.to} 
                       onMouseEnter={() => handlePrefetchRoute(link.to)}
                       onTouchStart={() => handlePrefetchRoute(link.to)}
-                      onFocus={() => handlePrefetchRoute(link.to)}
                       className={`relative text-[14px] xl:text-[15.5px] font-bold tracking-wider transition-all duration-300 pb-2 whitespace-nowrap inline-flex items-center gap-1.5 ${
                         isLive ? "live-nav-item" : "hover:opacity-85"
                       } ${
@@ -366,7 +364,6 @@ export default function Navbar() {
                   to={link.to} 
                   onMouseEnter={() => handlePrefetchRoute(link.to)}
                   onTouchStart={() => handlePrefetchRoute(link.to)}
-                  onFocus={() => handlePrefetchRoute(link.to)}
                   id={`mobile-nav-${link.to.replace(/\//g, '') || 'home'}`}
                   className={`text-[15.5px] sm:text-[17px] font-bold tracking-wide transition-all inline-flex items-center gap-1.5 py-3.5 ${
                     isLive ? "live-nav-item" : "hover:opacity-85"

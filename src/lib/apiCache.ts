@@ -82,18 +82,52 @@ export function getCachedSync<T = any>(url: string, ttl: number = DEFAULT_TTL): 
 export function prefetchAppInitialData() {
   if (typeof window === "undefined") return;
   const path = window.location.pathname;
-
   const warm = (url: string) => { void fetchWithCache(url).catch(() => {}); };
-  if (path.startsWith("/product/")) {
+
+  // Keep the active route's critical request alone at startup. On Home, the
+  // homepage section response is what reveals the real Hero image URL; warming
+  // settings/SEO sections at the same time competes with that critical request.
+  if (path === "/" || path === "") {
+    const serverSectionsAvailable = Array.isArray((window as any).__INITIAL_HOMEPAGE_SECTIONS__)
+      && (window as any).__INITIAL_HOMEPAGE_SECTIONS__.length > 0;
+    // If the server already supplied the Hero configuration, do not refresh it
+    // until after the preloaded Hero image is ready. Otherwise this is the one
+    // critical request we start immediately on a cold Home visit.
+    if (!serverSectionsAvailable) warm("/api/homepage-sections");
+    let secondaryStarted = false;
+    const deferSecondary = () => {
+      if (secondaryStarted) return;
+      secondaryStarted = true;
+      const run = () => {
+        if (serverSectionsAvailable) warm("/api/homepage-sections");
+        warm("/api/sections");
+        warm("/api/store-settings");
+      };
+      if ("requestIdleCallback" in window) window.requestIdleCallback(run, { timeout: 5000 });
+      else window.setTimeout(run, 1800);
+    };
+    window.addEventListener("bellaura:hero-ready", deferSecondary, { once: true });
+    // Safety fallback if the Hero image fails or the Home route has no Hero.
+    window.setTimeout(() => {
+      if (!document.querySelector('[data-home-hero-ready="true"]')) deferSecondary();
+    }, 6000);
+  } else if (path.startsWith("/product/")) {
     const id = path.split("/").filter(Boolean)[1];
-    if (id) warm(`/api/products/${id}`);
-  } else if (path === "/" || path === "") {
-    warm("/api/homepage-sections");
+    if (id) warm(`/api/products/${encodeURIComponent(id)}`);
+    // Product content is the critical path on direct product visits.
+    const runSecondary = () => {
+      if ("requestIdleCallback" in window) {
+        window.requestIdleCallback(() => { warm("/api/store-settings"); }, { timeout: 4000 });
+      } else window.setTimeout(() => warm("/api/store-settings"), 2000);
+    };
+    window.setTimeout(runSecondary, 1500);
   } else if (path === "/faq") {
     warm("/api/faq");
+    warm("/api/store-settings");
+  } else {
+    warm("/api/sections");
+    warm("/api/store-settings");
   }
-  warm("/api/sections");
-  warm("/api/store-settings");
 }
 
 export function clearCache(url?: string) {
