@@ -6,7 +6,7 @@
  * Admin functionality lives at admin.bellauraoils.com
  */
 
-import React, { Suspense } from "react";
+import React, { Suspense, useEffect } from "react";
 import { lazyRetry } from "./lib/lazyRetry";
 import ChunkErrorBoundary from "./components/ChunkErrorBoundary";
 import {
@@ -58,6 +58,56 @@ function LuxuryLoader() {
 }
 
 export default function App() {
+  // Keep the Home route's first render/network work ahead of every other page.
+  // Once the initial view has settled, warm one non-home route chunk at a time
+  // during idle periods so navigation feels instant without competing with Home.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let idleId: number | undefined;
+    const preloads: Array<() => Promise<unknown>> = [
+      () => import("./components/CategoryPage"),
+      () => import("./components/ReviewsPage"),
+      () => import("./components/AboutPage"),
+      () => import("./components/FaqPage"),
+      () => import("./CheckoutPage"),
+      () => import("./components/LeaveReviewPage"),
+      () => import("./components/GeneralReviewPage"),
+      () => import("./components/ProductDetail"),
+    ];
+    let index = 0;
+
+    const scheduleNext = () => {
+      if (cancelled || index >= preloads.length) return;
+      const runOne = () => {
+        idleId = undefined;
+        if (cancelled || index >= preloads.length) return;
+        const load = preloads[index++];
+        // Ignore background preload failures; lazyRetry handles actual navigation.
+        void load().catch(() => {}).finally(() => {
+          if (!cancelled) timer = setTimeout(scheduleNext, 650);
+        });
+      };
+      if ("requestIdleCallback" in window) {
+        idleId = window.requestIdleCallback(runOne, { timeout: 4000 });
+      } else {
+        timer = setTimeout(runOne, 900);
+      }
+    };
+
+    // Give Home's hero, text and first data requests a head start.
+    timer = setTimeout(scheduleNext, 2200);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      if (idleId !== undefined && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleId);
+      }
+    };
+  }, []);
+
   return (
     <Router>
       <ScrollToTop />
