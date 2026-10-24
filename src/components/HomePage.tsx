@@ -422,24 +422,25 @@ function HomePage() {
                 style={{
                   textAlign: flex.textAlign,
                   color: overlay.text_color,
-                  ...(overlay.text_bg_enabled
-                    ? {
-                        // backdrop-filter blurs the existing hero image only behind this panel;
-                        // the text and the image element itself remain unchanged.
-                        backgroundColor: `rgba(0,0,0,${1 - overlay.text_bg_transparency / 100})`,
-                        backdropFilter: overlay.text_bg_blur > 0
-                          ? `blur(${(overlay.text_bg_blur / 100) * 18}px)`
-                          : "none",
-                        WebkitBackdropFilter: overlay.text_bg_blur > 0
-                          ? `blur(${(overlay.text_bg_blur / 100) * 18}px)`
-                          : "none",
-                        padding: "clamp(12px, 2.2vw, 28px)",
-                        borderRadius: "10px",
-                      }
-                    : {}),
                 }}
                 dir={isAr ? "rtl" : "ltr"}
               >
+                {/* Blur/transparency belong to the text block only. Keep CTA buttons
+                    outside this panel so their backgrounds and edges stay crisp. */}
+                <div
+                  className={heading || overlaySub ? "w-fit max-w-full" : "hidden"}
+                  style={overlay.text_bg_enabled && (heading || overlaySub) ? {
+                    backgroundColor: `rgba(0,0,0,${1 - overlay.text_bg_transparency / 100})`,
+                    backdropFilter: overlay.text_bg_blur > 0
+                      ? `blur(${(overlay.text_bg_blur / 100) * 18}px)`
+                      : "none",
+                    WebkitBackdropFilter: overlay.text_bg_blur > 0
+                      ? `blur(${(overlay.text_bg_blur / 100) * 18}px)`
+                      : "none",
+                    padding: "clamp(12px, 2.2vw, 28px)",
+                    borderRadius: "10px",
+                  } : {}}
+                >
                 {/*
                   Each line animates in on its own motion.div rather than one
                   wrapper around the whole block, so heading/subtext/button
@@ -480,6 +481,7 @@ function HomePage() {
                     {overlaySub}
                   </motion.p>
                 )}
+                </div>
                 {btnLabel && cta.href && (
                   <motion.div
                     initial={animFrom}
