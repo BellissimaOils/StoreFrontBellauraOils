@@ -237,6 +237,40 @@ const isPreloadableImageUrl = (value: unknown): value is string => {
 };
 const escapeAttr = (value: string) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 
+// Social-preview images use a predictable slug-based JPG key in R2:
+// Images/Meta_Products/<product-slug>.jpg. Cache availability checks so
+// social crawlers do not trigger an R2 request on every product page visit.
+const META_PRODUCT_IMAGE_BASE = "https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/Meta_Products";
+const META_PRODUCT_IMAGE_CHECK_TTL_MS = 5 * 60 * 1000;
+const META_PRODUCT_IMAGE_CHECK_TIMEOUT_MS = 1800;
+const metaProductImageChecks = new Map<string, { exists: boolean; checkedAt: number }>();
+
+async function resolveProductMetaImage(product: any, pathname: string, fallbackUrl: string): Promise<string> {
+  const rawSlug = (product && getProductSlug(product.name_en || product.name || product.name_ar || "")) || decodeURIComponent(pathname.split("/")[2] || "");
+  const slug = String(rawSlug || "").trim().toLowerCase();
+  // Only allow safe, predictable slug characters in an object key.
+  if (!slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return fallbackUrl;
+  const imageUrl = `${META_PRODUCT_IMAGE_BASE}/${encodeURIComponent(slug)}.jpg`;
+  const cached = metaProductImageChecks.get(imageUrl);
+  if (cached && Date.now() - cached.checkedAt < META_PRODUCT_IMAGE_CHECK_TTL_MS) {
+    return cached.exists ? imageUrl : fallbackUrl;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), META_PRODUCT_IMAGE_CHECK_TIMEOUT_MS);
+  try {
+    const response = await fetch(imageUrl, { method: "HEAD", signal: controller.signal });
+    const exists = response.ok && (response.headers.get("content-type") || "").toLowerCase().includes("image/jpeg");
+    metaProductImageChecks.set(imageUrl, { exists, checkedAt: Date.now() });
+    return exists ? imageUrl : fallbackUrl;
+  } catch {
+    // A transient R2/network failure must not break the product page or leave og:image empty.
+    return fallbackUrl;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const { fetchEverythingFromD1, loadDb, saveDb } = createCoreDbService({
   getReviewTokens: () => reviewTokens,
   setReviewTokens: (v) => { reviewTokens = v; },
@@ -601,17 +635,10 @@ const app: Promise<express.Express> = (async () => {
       // react-helmet-async never run for them. The HTML that leaves this function is the
       // one they inspect.
       //
-      // Social preview images are JPEGs because some social crawlers do not reliably
-      // render AVIF. Keep the homepage/default image for general pages, and use the
-      // dedicated R2 JPEG for products that have a configured Meta_Products image.
-      const DEFAULT_META_IMAGE_URL = "https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/Home_BellauraOils_Meta.jpg";
-      const PRODUCT_META_IMAGES: Record<string, string> = {
-        // Test mapping confirmed by the user. Add other product slug -> image URL
-        // mappings here as the user supplies each product's exact R2 filename.
-        "apricot-kernel-oil": "https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/Meta_Products/ApricotKernel.jpg",
-      };
-      const productSlug = pathname.match(/^\/product\/([^/?#]+)\/?$/i)?.[1]?.toLowerCase();
-      const META_IMAGE_URL = (productSlug && PRODUCT_META_IMAGES[productSlug]) || DEFAULT_META_IMAGE_URL;
+      // 1. Product pages use Images/Meta_Products/<product-slug>.jpg when the public
+      //    JPG exists; otherwise they fall back to the shared homepage meta image.
+      // 2. Text (Title & Description): Dynamically generated per page/product.
+      const META_IMAGE_URL = "https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/Home_BellauraOils_Meta.jpg";
 
       const pageSeo = resolvePageSeo({
         pathname,
@@ -634,7 +661,10 @@ const app: Promise<express.Express> = (async () => {
       const escapedTitle = escapeAttr(cleanTitle);
       const escapedDesc = escapeAttr(truncatedDesc);
       const escapedUrl = escapeAttr(canonicalUrl);
-      const escapedImg = escapeAttr(META_IMAGE_URL);
+      const socialImageUrl = isProduct
+        ? await resolveProductMetaImage(initialProduct, pathname, META_IMAGE_URL)
+        : META_IMAGE_URL;
+      const escapedImg = escapeAttr(socialImageUrl);
 
       // 1. Title tag: <title>...</title>
       html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${cleanTitle.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</title>`);
@@ -658,7 +688,7 @@ const app: Promise<express.Express> = (async () => {
       html = html.replace(/(<meta\s+property="og:url"\s+content=")[^"]*(")/g, `$1${escapedUrl}$2`);
       html = html.replace(/(<meta\s+property="og:type"\s+content=")[^"]*(")/g, `$1${isProduct ? "product" : "website"}$2`);
 
-      // 6. Open Graph & Twitter Images (Always the designated Home_BellauraOils_Meta.jpg JPEG)
+      // 6. Open Graph & Twitter Images (product-specific JPG when available, safe fallback otherwise)
       html = html.replace(/(<meta\s+property="og:image(?::secure_url)?"\s+content=")[^"]*(")/g, `$1${escapedImg}$2`);
       html = html.replace(/(<meta\s+name="twitter:image"\s+content=")[^"]*(")/g, `$1${escapedImg}$2`);
       html = html.replace(/(<meta\s+property="og:image:type"\s+content=")[^"]*(")/g, `$1image/jpeg$2`);
