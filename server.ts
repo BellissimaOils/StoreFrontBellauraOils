@@ -601,10 +601,17 @@ const app: Promise<express.Express> = (async () => {
       // react-helmet-async never run for them. The HTML that leaves this function is the
       // one they inspect.
       //
-      // 1. Social Image: The user specified that Home_BellauraOils_Meta.jpg must ALWAYS
-      //    be used as the preview image for all shared links.
-      // 2. Text (Title & Description): Dynamically generated per page/product.
-      const META_IMAGE_URL = "https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/Home_BellauraOils_Meta.jpg";
+      // Social preview images are JPEGs because some social crawlers do not reliably
+      // render AVIF. Keep the homepage/default image for general pages, and use the
+      // dedicated R2 JPEG for products that have a configured Meta_Products image.
+      const DEFAULT_META_IMAGE_URL = "https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/Home_BellauraOils_Meta.jpg";
+      const PRODUCT_META_IMAGES: Record<string, string> = {
+        // Test mapping confirmed by the user. Add other product slug -> image URL
+        // mappings here as the user supplies each product's exact R2 filename.
+        "apricot-kernel-oil": "https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/Meta_Products/ApricotKernel.jpg",
+      };
+      const productSlug = pathname.match(/^\/product\/([^/?#]+)\/?$/i)?.[1]?.toLowerCase();
+      const META_IMAGE_URL = (productSlug && PRODUCT_META_IMAGES[productSlug]) || DEFAULT_META_IMAGE_URL;
 
       const pageSeo = resolvePageSeo({
         pathname,
