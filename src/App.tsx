@@ -30,7 +30,9 @@ const ProductDetail = lazyRetry(() => import("./components/ProductDetail"));
 
 // All other pages are lazy-loaded per route so each visitor only downloads
 // the code for the page they actually visit.
-const HomePage        = lazyRetry(() => import("./components/HomePage"));
+// Home is the highest-priority route: include its component in the initial JS
+// bundle so the browser does not wait for a separate route-chunk request.
+import HomePage from "./components/HomePage";
 const CategoryPage    = lazyRetry(() => import("./components/CategoryPage"));
 const CheckoutPage    = lazyRetry(() => import("./CheckoutPage"));
 const ReviewsPage     = lazyRetry(() => import("./components/ReviewsPage"));

@@ -110,7 +110,7 @@ function HomePage() {
     ? cachedData.sections
         .filter((s: any) => Number(s.is_visible) === 1)
         .sort((a: any, b: any) => a.order_index - b.order_index)
-    : []; // Start empty if no cache, don't use DEFAULT_HERO which causes flashes
+    : [DEFAULT_HERO]; // Paint the real local fallback immediately; replace with CMS content when ready.
 
   const [sections, setSections] = React.useState<any[]>(initialSections);
   const [hasFetched, setHasFetched] = React.useState(Boolean(cachedData));
