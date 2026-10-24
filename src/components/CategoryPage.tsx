@@ -7,7 +7,6 @@ import { getProductSlug, LivePack } from "../types";
 import ProductCard from "./ProductCard";
 import LivePacksSection from "./LivePacksSection";
 import NotFoundPage from "./NotFoundPage";
-import LoadMoreButton from "./LoadMoreButton";
 import { PRODUCTS_PAGE_SIZE } from "../lib/useIncrementalList";
 import { Helmet } from "react-helmet-async";
 import {
@@ -231,8 +230,8 @@ export default function CategoryPage() {
       ? "vertical"
       : defaultLayout;
 
-  // How many cards of this category are revealed; grows by PRODUCTS_PAGE_SIZE
-  // per "Load more" click. Declared up here, above the loading / not-found
+  // How many cards of this category are revealed; grows automatically by
+  // PRODUCTS_PAGE_SIZE when the visitor scrolls near the end. Declared here, above the loading / not-found
   // early returns below, because the filtered `products` array this applies to
   // is only built after them — and a hook called after an early return would
   // change the hook order between renders. Collapses back to the first page
@@ -463,8 +462,6 @@ export default function CategoryPage() {
   const canonicalUrl = `${SITE_ORIGIN}${normalizeLinkUrl(location.pathname)}`;
 
   const visibleProducts = products.slice(0, visibleCount);
-  const hasMoreProducts = products.length > visibleCount;
-  const showMoreProducts = () => setVisibleCount((current) => current + PRODUCTS_PAGE_SIZE);
 
   return (
     <>
@@ -643,13 +640,7 @@ export default function CategoryPage() {
                 data-visible={visibleProducts.length}
                 className="h-px w-full"
               />
-              <LoadMoreButton
-                onClick={showMoreProducts}
-                hasMore={hasMoreProducts}
-                loaded={visibleProducts.length}
-                total={products.length}
-                className="mt-14"
-              />
+
             </>
           )}
         </div>

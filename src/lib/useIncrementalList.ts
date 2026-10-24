@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 /**
- * Reveals a long array one page at a time behind a "Load more" button.
+ * Reveals a long array one page at a time as the visitor scrolls near the end of the list.
  *
  * Why the product grids window client-side instead of paging the API the way
  * reviews do: `/api/products` is fetched once by ProductContext and shared by

@@ -1,9 +1,9 @@
+import { useEffect, useRef } from 'react';
 import { useProducts } from '../context/ProductContext';
 import { motion } from 'motion/react';
 import { SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import ProductCard from './ProductCard';
-import LoadMoreButton from './LoadMoreButton';
 import { useIncrementalList } from '../lib/useIncrementalList';
 
 export default function FeaturedProducts() {
@@ -46,6 +46,19 @@ export default function FeaturedProducts() {
   // collapsing back to 20 when someone switches grid/list would throw away
   // however far they had already scrolled.
   const { visible: visibleProducts, hasMore, showMore } = useIncrementalList(filteredProducts);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // Automatically reveal the next four products as the visitor scrolls near the end.
+  // No button click is required.
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+    if (!sentinel || !hasMore || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) showMore();
+    }, { rootMargin: '500px 0px', threshold: 0.01 });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, showMore, visibleProducts.length]);
 
   if (loading) {
     return (
@@ -90,12 +103,12 @@ export default function FeaturedProducts() {
           ))}
         </div>
 
-        <LoadMoreButton
-          onClick={showMore}
-          hasMore={hasMore}
-          loaded={visibleProducts.length}
-          total={filteredProducts.length}
-          className="mt-14"
+        <div
+          ref={loadMoreSentinelRef}
+          aria-hidden="true"
+          data-total={filteredProducts.length}
+          data-visible={visibleProducts.length}
+          className="h-px w-full"
         />
       </div>
     </section>
