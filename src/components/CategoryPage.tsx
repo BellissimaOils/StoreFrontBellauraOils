@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import { CATEGORIES } from "./constants";
 import { useLanguage } from "../context/LanguageContext";
@@ -7,6 +7,7 @@ import { getProductSlug, LivePack } from "../types";
 import ProductCard from "./ProductCard";
 import LivePacksSection from "./LivePacksSection";
 import NotFoundPage from "./NotFoundPage";
+import LoadMoreButton from "./LoadMoreButton";
 import { PRODUCTS_PAGE_SIZE } from "../lib/useIncrementalList";
 import { Helmet } from "react-helmet-async";
 import {
@@ -230,64 +231,16 @@ export default function CategoryPage() {
       ? "vertical"
       : defaultLayout;
 
-  // How many cards of this category are revealed; grows automatically by
-  // PRODUCTS_PAGE_SIZE when the visitor scrolls near the end. Declared here, above the loading / not-found
+  // How many cards of this category are revealed; grows by PRODUCTS_PAGE_SIZE
+  // per "Load more" click. Declared up here, above the loading / not-found
   // early returns below, because the filtered `products` array this applies to
   // is only built after them — and a hook called after an early return would
   // change the hook order between renders. Collapses back to the first page
   // when the visitor moves to a different category.
   const [visibleCount, setVisibleCount] = useState(PRODUCTS_PAGE_SIZE);
-  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
-
-  // Reset the list when navigating to a different category. Keep this separate
-  // from the observer effect so a route change cannot leave the list at a stale
-  // scroll depth or detach the observer permanently.
   useEffect(() => {
     setVisibleCount(PRODUCTS_PAGE_SIZE);
   }, [cleanId]);
-
-  useEffect(() => {
-    // The sentinel only exists after the loading branch has completed. Observe it
-    // and also check its position on navigation/scroll so incremental loading
-    // cannot get stuck showing only the first batch.
-    if (loading) return;
-    const sentinel = loadMoreSentinelRef.current;
-    if (!sentinel) return;
-
-    let scheduled = false;
-    const revealNextBatch = () => {
-      const total = Number(sentinel.dataset.total || 0);
-      if (scheduled || Number(sentinel.dataset.visible || 0) >= total) return;
-      scheduled = true;
-      setVisibleCount((current) => Math.min(current + PRODUCTS_PAGE_SIZE, total));
-      // This effect is recreated when visibleCount changes; the timeout is a
-      // guard against duplicate callbacks during the same render.
-      window.setTimeout(() => { scheduled = false; }, 120);
-    };
-
-    let observer: IntersectionObserver | undefined;
-    if (typeof IntersectionObserver !== "undefined") {
-      observer = new IntersectionObserver((entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) revealNextBatch();
-      }, { rootMargin: "900px 0px", threshold: 0 });
-      observer.observe(sentinel);
-    }
-
-    const checkSentinelPosition = () => {
-      const rect = sentinel.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 900 && rect.bottom >= -900) revealNextBatch();
-    };
-    window.addEventListener("scroll", checkSentinelPosition, { passive: true });
-    window.addEventListener("resize", checkSentinelPosition);
-    const frame = window.requestAnimationFrame(checkSentinelPosition);
-
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("scroll", checkSentinelPosition);
-      window.removeEventListener("resize", checkSentinelPosition);
-      window.cancelAnimationFrame(frame);
-    };
-  }, [visibleCount, cleanId, loading, allProducts.length]);
 
 
 
@@ -497,6 +450,8 @@ export default function CategoryPage() {
   const canonicalUrl = `${SITE_ORIGIN}${normalizeLinkUrl(location.pathname)}`;
 
   const visibleProducts = products.slice(0, visibleCount);
+  const hasMoreProducts = products.length > visibleCount;
+  const showMoreProducts = () => setVisibleCount((current) => current + PRODUCTS_PAGE_SIZE);
 
   return (
     <>
@@ -668,14 +623,13 @@ export default function CategoryPage() {
                 )}
               </div>
 
-              <div
-                ref={loadMoreSentinelRef}
-                aria-hidden="true"
-                data-total={products.length}
-                data-visible={visibleProducts.length}
-                className="h-px w-full"
+              <LoadMoreButton
+                onClick={showMoreProducts}
+                hasMore={hasMoreProducts}
+                loaded={visibleProducts.length}
+                total={products.length}
+                className="mt-14"
               />
-
             </>
           )}
         </div>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 /**
- * Reveals a long array one page at a time as the visitor scrolls near the end of the list.
+ * Reveals a long array one page at a time behind a "Load more" button.
  *
  * Why the product grids window client-side instead of paging the API the way
  * reviews do: `/api/products` is fetched once by ProductContext and shared by
@@ -13,10 +13,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
  *
  * Windowing here still fixes the part that actually hurts: instead of mounting
  * every ProductCard at once — each with its own image request, animation and
- * hover state — the grid mounts only four cards initially, then grows in small batches as the visitor reaches the end of the list.
+ * hover state — the grid mounts 20 and grows on demand.
  */
 
-export const PRODUCTS_PAGE_SIZE = 4;
+export const PRODUCTS_PAGE_SIZE = 20;
 
 export interface UseIncrementalListOptions {
   pageSize?: number;

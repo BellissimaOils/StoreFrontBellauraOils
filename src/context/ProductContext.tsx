@@ -16,19 +16,6 @@ interface ProductContextType {
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   setStoreSettings: React.Dispatch<React.SetStateAction<any>>;
 }
-const CATALOG_STORAGE_KEY = 'bellaura_catalog_cache_v1';
-const CATALOG_STORAGE_MAX_AGE = 10 * 60 * 1000;
-function readStoredCatalog(): Product[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.sessionStorage.getItem(CATALOG_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.products) || Date.now() - Number(parsed.savedAt || 0) > CATALOG_STORAGE_MAX_AGE) return [];
-    return parsed.products;
-  } catch { return []; }
-}
-
 const ProductContext = createContext<ProductContextType>({
   products: [], featuredProducts: [], featuredLoading: false, storeSettings: {}, loading: true, productError: false,
   fetchProducts: () => {}, fetchFeaturedProducts: () => {}, setProducts: () => {}, setStoreSettings: () => {},
@@ -69,15 +56,14 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   const productId = pathname.startsWith('/product/') ? decodeURIComponent(pathname.split('/')[2] || '') : '';
   const [products, setProducts] = useState<Product[]>(() => {
     const initial = (window as any).__INITIAL_PRODUCT__;
-    if (initial && matchesProduct(initial, productId)) return [initial];
-    return readStoredCatalog();
+    return initial && matchesProduct(initial, productId) ? [initial] : [];
   });
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>(() =>
     getCachedSync<any>('/api/products/featured', 30_000)?.products || [],
   );
   const [featuredLoading, setFeaturedLoading] = useState(true);
   const [storeSettings, setStoreSettings] = useState<any>(() => getCachedSync<any>('/api/store-settings')?.storeSettings || {});
-  const [catalogLoading, setCatalogLoading] = useState(() => readStoredCatalog().length === 0);
+  const [catalogLoading, setCatalogLoading] = useState(true);
   const [resolvedProduct, setResolvedProduct] = useState('');
   const [failedProduct, setFailedProduct] = useState('');
   const catalogRequested = useRef(false);
@@ -120,14 +106,10 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   const fetchProducts = useCallback(() => {
     if (catalogRequested.current) return;
     catalogRequested.current = true;
-    // A recent session catalog is rendered immediately; refresh it in the background.
-    const hasUsableCatalog = products.length > 0;
-    if (!hasUsableCatalog) setCatalogLoading(true);
+    setCatalogLoading(true);
     fetchWithCache('/api/products').then(data => {
       if (!data?.success || !Array.isArray(data.products)) throw new Error('Catalog unavailable');
-      const nextProducts = applyRatingSummary(data.products, ratingSummaryRef.current);
-      setProducts(nextProducts);
-      try { window.sessionStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify({ products: nextProducts, savedAt: Date.now() })); } catch {}
+      setProducts(applyRatingSummary(data.products, ratingSummaryRef.current));
       if (data.storeSettings) setStoreSettings(data.storeSettings);
       // Ratings never delay the catalog's first render.
       void fetchWithCache('/api/reviews/summary').then(data => {
@@ -139,20 +121,7 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
       catalogRequested.current = false;
       console.error('Failed to load catalog', error);
     }).finally(() => setCatalogLoading(false));
-  }, [products.length]);
-
-  // Warm the full catalog after the homepage has had time to paint, so moving to a
-  // product/category section usually uses cached data instead of waiting for D1.
-  useEffect(() => {
-    if (pathname !== '/' || products.length > 0) return;
-    let cancelled = false;
-    const run = () => { if (!cancelled) fetchProducts(); };
-    const idleWindow = window as any;
-    const idleId = typeof idleWindow.requestIdleCallback === 'function'
-      ? idleWindow.requestIdleCallback(run, { timeout: 1800 })
-      : window.setTimeout(run, 1200);
-    return () => { cancelled = true; if (typeof idleWindow.cancelIdleCallback === 'function') idleWindow.cancelIdleCallback(idleId); else window.clearTimeout(idleId); };
-  }, [pathname, products.length, fetchProducts]);
+  }, []);
 
   const fetchFeaturedProducts = useCallback(() => {
     if (featuredRequested.current) return;

@@ -36,10 +36,14 @@
     <meta name="twitter:image" content="https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/home.jpg" />
 
     
-    <!-- Prioritize the default homepage hero immediately while the CMS hero
-         configuration is fetched. This is a valid, public R2 image used by
-         the homepage and social preview. -->
-    <link rel="preload" as="image" href="https://pub-584126fe09324e178d68a3f2461340ea.r2.dev/Images/HomeImages/home.jpg" fetchpriority="high" />
+    <!-- No hero preload. This used to preload
+         /BackgroundPictures/hero_naissance_banner_v2_1779106857286.png, but
+         public/BackgroundPictures/ does not exist in the repo, so the file is
+         not in the build and the request 404s: a wasted round-trip on every
+         page load plus a console warning, and it preloaded nothing. The real
+         hero comes from homepage_sections.image_url, whose URL isn't known
+         until that data loads.
+         If a fixed hero file is added to public/, reinstate the preload. -->
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

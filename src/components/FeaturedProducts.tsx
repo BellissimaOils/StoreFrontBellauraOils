@@ -1,9 +1,9 @@
-import { useEffect, useRef } from 'react';
 import { useProducts } from '../context/ProductContext';
 import { motion } from 'motion/react';
 import { SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import ProductCard from './ProductCard';
+import LoadMoreButton from './LoadMoreButton';
 import { useIncrementalList } from '../lib/useIncrementalList';
 
 export default function FeaturedProducts() {
@@ -40,54 +40,12 @@ export default function FeaturedProducts() {
     return isAvailable && inCatalog && isSwiperVisible && matchesSection;
   });
 
-  // Render the first four cards immediately, then reveal four more whenever
-  // the visitor approaches the end of the grid. This is client-side windowing;
-  // the shared catalog request remains unchanged.
+  // Show 20 cards, then 20 more per click, instead of mounting the whole
+  // catalogue — every card carries an image request and its own animation.
+  // No resetKey: the layout toggle only restyles the same products, so
+  // collapsing back to 20 when someone switches grid/list would throw away
+  // however far they had already scrolled.
   const { visible: visibleProducts, hasMore, showMore } = useIncrementalList(filteredProducts);
-  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
-
-  // Automatically reveal more products without a button. Recreate the observer
-  // after each batch so it can immediately load another batch when the sentinel
-  // remains inside the prefetch margin (for example on a short viewport). A scroll
-  // fallback covers browsers/layout transitions where IntersectionObserver misses
-  // the initial intersection after client-side navigation.
-  useEffect(() => {
-    const sentinel = loadMoreSentinelRef.current;
-    if (!sentinel || !hasMore) return;
-
-    let scheduled = false;
-    const revealNextBatch = () => {
-      if (scheduled) return;
-      scheduled = true;
-      showMore();
-      window.setTimeout(() => { scheduled = false; }, 120);
-    };
-
-    let observer: IntersectionObserver | undefined;
-    if (typeof IntersectionObserver !== 'undefined') {
-      observer = new IntersectionObserver((entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) revealNextBatch();
-      }, { rootMargin: '900px 0px', threshold: 0 });
-      observer.observe(sentinel);
-    }
-
-    const checkSentinelPosition = () => {
-      const rect = sentinel.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 900 && rect.bottom >= -900) revealNextBatch();
-    };
-    window.addEventListener('scroll', checkSentinelPosition, { passive: true });
-    window.addEventListener('resize', checkSentinelPosition);
-    // Check once after the current render so navigation into the section does not
-    // require a manual refresh or an additional scroll event.
-    const frame = window.requestAnimationFrame(checkSentinelPosition);
-
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('scroll', checkSentinelPosition);
-      window.removeEventListener('resize', checkSentinelPosition);
-      window.cancelAnimationFrame(frame);
-    };
-  }, [hasMore, showMore, visibleProducts.length]);
 
   if (loading) {
     return (
@@ -132,12 +90,12 @@ export default function FeaturedProducts() {
           ))}
         </div>
 
-        <div
-          ref={loadMoreSentinelRef}
-          aria-hidden="true"
-          data-total={filteredProducts.length}
-          data-visible={visibleProducts.length}
-          className="h-px w-full"
+        <LoadMoreButton
+          onClick={showMore}
+          hasMore={hasMore}
+          loaded={visibleProducts.length}
+          total={filteredProducts.length}
+          className="mt-14"
         />
       </div>
     </section>
