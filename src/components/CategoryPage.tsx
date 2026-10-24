@@ -247,27 +247,46 @@ export default function CategoryPage() {
   }, [cleanId]);
 
   useEffect(() => {
-    // On a cold navigation, this component initially renders its loading state
-    // before the sentinel exists. Re-run when loading finishes / catalog changes
-    // so the observer is attached after the grid is actually mounted.
+    // The sentinel only exists after the loading branch has completed. Observe it
+    // and also check its position on navigation/scroll so incremental loading
+    // cannot get stuck showing only the first batch.
     if (loading) return;
     const sentinel = loadMoreSentinelRef.current;
-    if (!sentinel || typeof IntersectionObserver === "undefined") return;
+    if (!sentinel) return;
 
     let scheduled = false;
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting) || scheduled) return;
+    const revealNextBatch = () => {
       const total = Number(sentinel.dataset.total || 0);
-      const currentlyVisible = Number(sentinel.dataset.visible || 0);
-      if (currentlyVisible < total) {
-        scheduled = true;
-        setVisibleCount((current) => Math.min(current + PRODUCTS_PAGE_SIZE, total));
-        // Allow the next observer cycle after React has committed the new cards.
-        requestAnimationFrame(() => { scheduled = false; });
-      }
-    }, { rootMargin: "500px 0px", threshold: 0.01 });
-    observer.observe(sentinel);
-    return () => observer.disconnect();
+      if (scheduled || Number(sentinel.dataset.visible || 0) >= total) return;
+      scheduled = true;
+      setVisibleCount((current) => Math.min(current + PRODUCTS_PAGE_SIZE, total));
+      // This effect is recreated when visibleCount changes; the timeout is a
+      // guard against duplicate callbacks during the same render.
+      window.setTimeout(() => { scheduled = false; }, 120);
+    };
+
+    let observer: IntersectionObserver | undefined;
+    if (typeof IntersectionObserver !== "undefined") {
+      observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) revealNextBatch();
+      }, { rootMargin: "900px 0px", threshold: 0 });
+      observer.observe(sentinel);
+    }
+
+    const checkSentinelPosition = () => {
+      const rect = sentinel.getBoundingClientRect();
+      if (rect.top <= window.innerHeight + 900 && rect.bottom >= -900) revealNextBatch();
+    };
+    window.addEventListener("scroll", checkSentinelPosition, { passive: true });
+    window.addEventListener("resize", checkSentinelPosition);
+    const frame = window.requestAnimationFrame(checkSentinelPosition);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("scroll", checkSentinelPosition);
+      window.removeEventListener("resize", checkSentinelPosition);
+      window.cancelAnimationFrame(frame);
+    };
   }, [visibleCount, cleanId, loading, allProducts.length]);
 
 

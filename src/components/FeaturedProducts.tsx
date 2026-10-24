@@ -46,16 +46,47 @@ export default function FeaturedProducts() {
   const { visible: visibleProducts, hasMore, showMore } = useIncrementalList(filteredProducts);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Automatically reveal the next four products as the visitor scrolls near the end.
-  // No button click is required.
+  // Automatically reveal more products without a button. Recreate the observer
+  // after each batch so it can immediately load another batch when the sentinel
+  // remains inside the prefetch margin (for example on a short viewport). A scroll
+  // fallback covers browsers/layout transitions where IntersectionObserver misses
+  // the initial intersection after client-side navigation.
   useEffect(() => {
     const sentinel = loadMoreSentinelRef.current;
-    if (!sentinel || !hasMore || typeof IntersectionObserver === 'undefined') return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) showMore();
-    }, { rootMargin: '500px 0px', threshold: 0.01 });
-    observer.observe(sentinel);
-    return () => observer.disconnect();
+    if (!sentinel || !hasMore) return;
+
+    let scheduled = false;
+    const revealNextBatch = () => {
+      if (scheduled) return;
+      scheduled = true;
+      showMore();
+      window.setTimeout(() => { scheduled = false; }, 120);
+    };
+
+    let observer: IntersectionObserver | undefined;
+    if (typeof IntersectionObserver !== 'undefined') {
+      observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) revealNextBatch();
+      }, { rootMargin: '900px 0px', threshold: 0 });
+      observer.observe(sentinel);
+    }
+
+    const checkSentinelPosition = () => {
+      const rect = sentinel.getBoundingClientRect();
+      if (rect.top <= window.innerHeight + 900 && rect.bottom >= -900) revealNextBatch();
+    };
+    window.addEventListener('scroll', checkSentinelPosition, { passive: true });
+    window.addEventListener('resize', checkSentinelPosition);
+    // Check once after the current render so navigation into the section does not
+    // require a manual refresh or an additional scroll event.
+    const frame = window.requestAnimationFrame(checkSentinelPosition);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('scroll', checkSentinelPosition);
+      window.removeEventListener('resize', checkSentinelPosition);
+      window.cancelAnimationFrame(frame);
+    };
   }, [hasMore, showMore, visibleProducts.length]);
 
   if (loading) {
