@@ -93,7 +93,7 @@ export function createProductRouter(state: ProductsState) {
     const apiToken = sanitizeCredentials(process.env.CLOUDFLARE_D1_API_TOKEN);
 
     // Refresh state products if stale so localProduct is never an indefinitely stale boot snapshot
-    const D1_CACHE_TTL_MS = 5 * 1000;
+    const D1_CACHE_TTL_MS = 30 * 1000;
     const cache = state.getD1ApiCacheProducts();
     if (accountId && databaseId && apiToken && !isMaskedValue(accountId)) {
       if (!cache.data || Date.now() - cache.timestamp > D1_CACHE_TTL_MS) {
@@ -292,7 +292,7 @@ export function createProductRouter(state: ProductsState) {
       return await sendProducts(safeProducts);
     }
 
-    const D1_CACHE_TTL_MS = 5 * 1000;
+    const D1_CACHE_TTL_MS = 30 * 1000;
     const cache = state.getD1ApiCacheProducts();
     const needsRefresh = !cache.data || Date.now() - cache.timestamp > D1_CACHE_TTL_MS;
 
