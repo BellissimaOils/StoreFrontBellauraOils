@@ -112,9 +112,9 @@ function LivePackCard({ pack, index }: { pack: LivePack; index: number; key?: Re
 
   const scrollCarousel = (direction: "left" | "right") => {
     if (!carouselRef.current) return;
-    const scrollAmount = 200;
-    const multiplier = isAr ? (direction === "left" ? 1 : -1) : (direction === "left" ? -1 : 1);
-    carouselRef.current.scrollBy({ left: scrollAmount * multiplier, behavior: "smooth" });
+    const scrollAmount = 240;
+    const move = direction === "left" ? -scrollAmount : scrollAmount;
+    carouselRef.current.scrollBy({ left: move, behavior: "smooth" });
   };
 
   const productsList = pack.products || [];
@@ -179,22 +179,24 @@ function LivePackCard({ pack, index }: { pack: LivePack; index: number; key?: Re
               <span className="text-[10px] text-primary-earth/40 sm:hidden">
                 {isAr ? "تمرير ↔" : "Swipe ↔"}
               </span>
-              <button
-                type="button"
-                onClick={() => scrollCarousel("right")}
-                aria-label="Scroll right"
-                className="w-6 h-6 rounded-full bg-white border border-primary-earth/10 flex items-center justify-center text-primary-earth/70 hover:text-primary-earth hover:border-accent-gold transition-colors cursor-pointer shadow-2xs"
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollCarousel("left")}
-                aria-label="Scroll left"
-                className="w-6 h-6 rounded-full bg-white border border-primary-earth/10 flex items-center justify-center text-primary-earth/70 hover:text-primary-earth hover:border-accent-gold transition-colors cursor-pointer shadow-2xs"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1.5" dir="ltr">
+                <button
+                  type="button"
+                  onClick={() => scrollCarousel("left")}
+                  aria-label="Scroll left"
+                  className="w-6 h-6 rounded-full bg-white border border-primary-earth/10 flex items-center justify-center text-primary-earth/70 hover:text-primary-earth hover:border-accent-gold transition-colors cursor-pointer shadow-2xs"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scrollCarousel("right")}
+                  aria-label="Scroll right"
+                  className="w-6 h-6 rounded-full bg-white border border-primary-earth/10 flex items-center justify-center text-primary-earth/70 hover:text-primary-earth hover:border-accent-gold transition-colors cursor-pointer shadow-2xs"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           )}
         </div>
