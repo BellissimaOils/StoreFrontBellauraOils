@@ -179,7 +179,7 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
         <div className="flex gap-6 overflow-x-hidden px-4 sm:px-[10%]">
           {[0, 1, 2, 3].map((i) => (
             <div key={i} className="flex-shrink-0 w-[72vw] sm:w-[280px]">
-              <div className="aspect-[4/5] rounded-2xl bg-primary-earth/[0.06] bo-shimmer mb-3" />
+              <div className="aspect-[4/5] rounded-2xl bg-[#f4e8fa] bo-shimmer mb-3" />
               <div className="h-3.5 w-3/4 mx-auto rounded bg-primary-earth/[0.06] bo-shimmer mb-2" />
               <div className="h-3 w-1/3 mx-auto rounded bg-primary-earth/[0.06] bo-shimmer" />
             </div>
@@ -302,7 +302,10 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
                   button — is unchanged; only navigation was removed.
                 */}
                 <div draggable={false}>
-                  <div className="relative aspect-[4/5] overflow-hidden rounded-2xl mb-3 bg-gradient-to-br from-white to-accent-lilac/25 border border-primary-earth/[0.06] shadow-sm transition-all duration-500 group-hover:shadow-xl group-hover:shadow-primary-earth/10 group-hover:-translate-y-1">
+                  <div className="relative aspect-[4/5] overflow-hidden rounded-2xl mb-3 bg-gradient-to-b from-[#fbf8fe] via-[#f5ebfc] to-[#eee2fa] border border-[#e8d7f6] shadow-sm transition-all duration-500 group-hover:shadow-xl group-hover:shadow-[#d6b3fc]/20 group-hover:-translate-y-1">
+                    {/* Subtle soft ambient light purple radial aura behind the transparent bottle */}
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(214,179,252,0.22)_0%,transparent_75%)] pointer-events-none" />
+
                     {badgeLabel && (
                       <span
                         className={`absolute top-3 z-10 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full shadow-sm ${
@@ -324,7 +327,7 @@ export default function CollectionSwiper({ title, subtitle, content }: Collectio
                         fetchPriority={index === 0 ? "high" : index < 3 ? "auto" : "low"}
                         decoding="async"
                         draggable={false}
-                        className="w-full h-full object-contain p-4 transition-transform duration-700 ease-out group-hover:scale-[1.08]"
+                        className="w-full h-full object-contain p-4 transition-transform duration-700 ease-out group-hover:scale-[1.08] relative z-10 drop-shadow-sm"
                         referrerPolicy="no-referrer"
                       />
                     )}

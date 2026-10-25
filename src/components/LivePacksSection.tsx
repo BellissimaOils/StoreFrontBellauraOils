@@ -216,7 +216,7 @@ function LivePackCard({ pack, index }: { pack: LivePack; index: number; key?: Re
                 } snap-start bg-white rounded-xl border border-primary-earth/10 p-2 sm:p-2.5 flex flex-col justify-between shadow-2xs hover:border-accent-gold/40 hover:shadow-xs transition-all`}
               >
                 <div className="space-y-1.5">
-                  <div className="w-full aspect-square bg-[#0a0a0a] rounded-lg overflow-hidden flex items-center justify-center p-1 border border-primary-earth/5">
+                  <div className="w-full aspect-square bg-gradient-to-b from-[#fbf8fe] via-[#f5ebfc] to-[#eee2fa] rounded-lg overflow-hidden flex items-center justify-center p-1 border border-[#e8d7f6]">
                     {product.image ? (
                       <img
                         src={getOptimizedImageUrl(product.image, "eco", 180) || product.image}
