@@ -427,40 +427,14 @@ function HomePage() {
               >
                 {/* Blur/transparency belong to the text block only. Keep CTA buttons
                     outside this panel so their backgrounds and edges stay crisp. */}
-                <div
-                  className={heading || overlaySub ? "w-fit max-w-full" : "hidden"}
-                  style={heroReady && overlay.text_bg_enabled && (heading || overlaySub) ? {
-                    display: "inline-block",
-                    width: "fit-content",
-                    maxWidth: "100%",
-                    boxSizing: "border-box",
-                    backgroundColor: `rgba(0,0,0,${1 - overlay.text_bg_transparency / 100})`,
-                    backdropFilter: overlay.text_bg_blur > 0
-                      ? `blur(${(overlay.text_bg_blur / 100) * 18}px)`
-                      : "none",
-                    WebkitBackdropFilter: overlay.text_bg_blur > 0
-                      ? `blur(${(overlay.text_bg_blur / 100) * 18}px)`
-                      : "none",
-                    padding: "clamp(12px, 2.2vw, 28px)",
-                    borderRadius: "10px",
-                  } : {}}
-                >
-                {/*
-                  Each line animates in on its own motion.div rather than one
-                  wrapper around the whole block, so heading/subtext/button
-                  can be staggered ~150ms apart instead of popping in as one
-                  flat unit. All three still start counting from the same
-                  admin-configured base delay (overlay.text_delay, default
-                  1s), which is what actually "moves after 1s" — the stagger
-                  on top of that is a small polish, not the requested delay
-                  itself.
-                */}
+                {/* Blur/transparency applied directly to the text only with margin 0 and tight wrap */}
+                <div className={heading || overlaySub ? "w-fit max-w-full" : "hidden"}>
                 {heading && (
                   <motion.h1
                     initial={animFrom}
                     animate={ANIM_TARGET}
                     transition={{ duration: animDuration, ease: "easeOut", delay: animDelay }}
-                    className="font-light leading-[1.1] tracking-tight mb-4 break-words drop-shadow-sm"
+                    className="font-light leading-[1.15] tracking-tight mb-3 break-words drop-shadow-sm"
                     style={{
                       // min(5vw, 8vh) rather than 5vw alone. Sizing the heading
                       // off viewport WIDTH only meant a short-but-wide window
@@ -472,7 +446,25 @@ function HomePage() {
                       fontSize: `calc(clamp(1.75rem, min(5vw, 8vh), 4rem) * ${overlay.heading_scale / 100})`,
                     }}
                   >
-                    {heading}
+                    <span
+                      style={heroReady && overlay.text_bg_enabled ? {
+                        backgroundColor: `rgba(0,0,0,${1 - overlay.text_bg_transparency / 100})`,
+                        backdropFilter: overlay.text_bg_blur > 0
+                          ? `blur(${(overlay.text_bg_blur / 100) * 18}px)`
+                          : "none",
+                        WebkitBackdropFilter: overlay.text_bg_blur > 0
+                          ? `blur(${(overlay.text_bg_blur / 100) * 18}px)`
+                          : "none",
+                        boxDecorationBreak: "clone",
+                        WebkitBoxDecorationBreak: "clone",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        margin: 0,
+                        display: "inline",
+                      } : {}}
+                    >
+                      {heading}
+                    </span>
                   </motion.h1>
                 )}
                 {overlaySub && (
@@ -480,9 +472,27 @@ function HomePage() {
                     initial={animFrom}
                     animate={ANIM_TARGET}
                     transition={{ duration: animDuration, ease: "easeOut", delay: animDelay + animStagger }}
-                    className="text-sm sm:text-base lg:text-xl font-light leading-relaxed mb-7 opacity-90 break-words"
+                    className="text-sm sm:text-base lg:text-xl font-light leading-relaxed mb-6 opacity-90 break-words"
                   >
-                    {overlaySub}
+                    <span
+                      style={heroReady && overlay.text_bg_enabled ? {
+                        backgroundColor: `rgba(0,0,0,${1 - overlay.text_bg_transparency / 100})`,
+                        backdropFilter: overlay.text_bg_blur > 0
+                          ? `blur(${(overlay.text_bg_blur / 100) * 18}px)`
+                          : "none",
+                        WebkitBackdropFilter: overlay.text_bg_blur > 0
+                          ? `blur(${(overlay.text_bg_blur / 100) * 18}px)`
+                          : "none",
+                        boxDecorationBreak: "clone",
+                        WebkitBoxDecorationBreak: "clone",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        margin: 0,
+                        display: "inline",
+                      } : {}}
+                    >
+                      {overlaySub}
+                    </span>
                   </motion.p>
                 )}
                 </div>
