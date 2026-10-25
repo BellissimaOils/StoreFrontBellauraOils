@@ -97,13 +97,6 @@ function LivePackCard({ pack, index }: { pack: LivePack; index: number; key?: Re
   const [added, setAdded] = useState(false);
   const carouselRef = useRef<HTMLDivElement>(null);
 
-  const discountAmount =
-    pack.regular_price > pack.live_price ? pack.regular_price - pack.live_price : 0;
-  const discountPercent =
-    pack.regular_price > 0 && discountAmount > 0
-      ? Math.round((discountAmount / pack.regular_price) * 100)
-      : 0;
-
   const handleAddToCart = () => {
     addLivePackToCart(pack, 1);
     setAdded(true);
@@ -134,11 +127,6 @@ function LivePackCard({ pack, index }: { pack: LivePack; index: number; key?: Re
               <h3 className="text-lg sm:text-xl font-bold text-primary-earth tracking-tight">
                 {pack.name}
               </h3>
-              {discountPercent > 0 && (
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-red-600 text-white shadow-xs">
-                  {isAr ? `خصم ${discountPercent}%` : `-${discountPercent}%`}
-                </span>
-              )}
             </div>
 
             {pack.description && (
@@ -218,9 +206,6 @@ function LivePackCard({ pack, index }: { pack: LivePack; index: number; key?: Re
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
           {productsList.map((product, pIdx) => {
-            const rawPrice = product.price ? String(product.price).replace(/[^\d.]/g, "") : "";
-            const formattedPrice = rawPrice ? `${Math.round(parseFloat(rawPrice))} DH` : "";
-
             return (
               <div
                 key={product.id || pIdx}
@@ -257,13 +242,6 @@ function LivePackCard({ pack, index }: { pack: LivePack; index: number; key?: Re
                     </h4>
                   </div>
                 </div>
-
-                {formattedPrice && (
-                  <div className="pt-1.5 border-t border-primary-earth/5 mt-1.5 flex items-center justify-between text-[10px] text-primary-earth/60">
-                    <span>{isAr ? "السعر الفردي:" : "Single:"}</span>
-                    <span className="font-mono font-medium line-through">{formattedPrice}</span>
-                  </div>
-                )}
               </div>
             );
           })}
@@ -271,14 +249,17 @@ function LivePackCard({ pack, index }: { pack: LivePack; index: number; key?: Re
       </div>
 
       {/* Pack Bottom Pricing & CTA */}
-      <div className="p-4 sm:p-5 border-t border-primary-earth/10 bg-white flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        {/* Pricing block */}
-        <div className="space-y-0.5">
+      <div className="p-4 sm:p-5 border-t border-primary-earth/10 bg-white grid grid-cols-1 sm:grid-cols-3 items-center gap-3 sm:gap-4">
+        {/* Desktop spacer to keep center price mathematically centered */}
+        <div className="hidden sm:block" aria-hidden="true" />
+
+        {/* Centered Pricing block */}
+        <div className="flex flex-col items-center justify-center text-center space-y-0.5">
           <div className="text-[10px] font-bold text-primary-earth/50 uppercase tracking-wider">
             {isAr ? "السعر الترويجي الخاص باللايف" : isFr ? "Prix Promotionnel Live" : "Special Live Price"}
           </div>
-          <div className="flex items-baseline gap-2.5">
-            <span className="text-xl sm:text-2xl font-black text-accent-gold font-sans tracking-tight">
+          <div className="flex items-baseline justify-center gap-2.5">
+            <span className="text-2xl sm:text-3xl font-black text-accent-gold font-sans tracking-tight">
               {Math.round(pack.live_price)} DH
             </span>
             {pack.regular_price > pack.live_price && (
@@ -286,36 +267,33 @@ function LivePackCard({ pack, index }: { pack: LivePack; index: number; key?: Re
                 {Math.round(pack.regular_price)} DH
               </span>
             )}
-            {discountAmount > 0 && (
-              <span className="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-md border border-green-200">
-                {isAr ? `توفير ${Math.round(discountAmount)} DH` : `Save ${Math.round(discountAmount)} DH`}
-              </span>
-            )}
           </div>
         </div>
 
         {/* Add Pack to Cart CTA Button */}
-        <button
-          type="button"
-          onClick={handleAddToCart}
-          className={`px-6 py-2.5 sm:py-3 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md ${
-            added
-              ? "bg-emerald-600 text-white shadow-emerald-600/30 ring-2 ring-emerald-500"
-              : "bg-primary-earth hover:bg-accent-gold text-white shadow-primary-earth/20 hover:shadow-lg hover:-translate-y-0.5"
-          }`}
-        >
-          {added ? (
-            <>
-              <Check className="w-4 h-4 text-white" />
-              <span>{isAr ? "تمت إضافة الباقة للسلة!" : "Pack Added to Cart!"}</span>
-            </>
-          ) : (
-            <>
-              <ShoppingBag className="w-4 h-4" />
-              <span>{isAr ? "أضف الباقة إلى السلة" : isFr ? "Ajouter le pack au panier" : "Add Pack to Cart"}</span>
-            </>
-          )}
-        </button>
+        <div className="flex justify-center sm:justify-end">
+          <button
+            type="button"
+            onClick={handleAddToCart}
+            className={`w-full sm:w-auto px-6 py-2.5 sm:py-3 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md ${
+              added
+                ? "bg-emerald-600 text-white shadow-emerald-600/30 ring-2 ring-emerald-500"
+                : "bg-primary-earth hover:bg-accent-gold text-white shadow-primary-earth/20 hover:shadow-lg hover:-translate-y-0.5"
+            }`}
+          >
+            {added ? (
+              <>
+                <Check className="w-4 h-4 text-white" />
+                <span>{isAr ? "تمت إضافة الباقة للسلة!" : "Pack Added to Cart!"}</span>
+              </>
+            ) : (
+              <>
+                <ShoppingBag className="w-4 h-4" />
+                <span>{isAr ? "أضف الباقة إلى السلة" : isFr ? "Ajouter le pack au panier" : "Add Pack to Cart"}</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
