@@ -4,13 +4,14 @@ import { useCart } from './context/CartContext';
 import { useLanguage } from './context/LanguageContext';
 import { useProducts } from './context/ProductContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ShoppingBag, CheckCircle2, MessageCircle, Loader2, Printer, Clock, BadgeCheck, ChevronDown, Search } from 'lucide-react';
+import { ChevronLeft, ShoppingBag, CheckCircle2, MessageCircle, Loader2, Printer, Clock, BadgeCheck, ChevronDown, Search, AlertCircle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { SITE_HOST } from './lib/siteUrl';
 import { trackPurchase } from './lib/pixel';
 import { tracker } from './lib/tracker';
 import { Helmet } from 'react-helmet-async';
 import { BRAND } from './lib/seoContent';
+import { checkOrderEligibility } from './lib/cartOrderRules';
 
 function normalizeString(str: string): string {
   if (!str) return "";
@@ -170,6 +171,7 @@ export default function CheckoutPage() {
     if (isAr) return item.name || item.name_en || '';
     return item.name_en || item.name || '';
   };
+  const eligibility = checkOrderEligibility(cart);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -559,6 +561,17 @@ ${t('cart.total')}: ${total} ${shippingLabel}
   const handleSubmit = async (e: React.FormEvent) => {
     if (e) e.preventDefault();
     if (cart.length === 0) return;
+
+    if (!eligibility.isEligible) {
+      setError(
+        language === 'ar'
+          ? eligibility.messageAr
+          : language === 'fr'
+            ? eligibility.messageFr
+            : eligibility.messageEn
+      );
+      return;
+    }
 
     const trimmedName = (formData.firstName || '').trim();
     if (trimmedName.length > 50) {
@@ -1635,16 +1648,43 @@ ${t('cart.total')}: ${total} ${shippingLabel}
                 </div>
               )}
 
+              {!eligibility.isEligible && (
+                <div className="bg-amber-50/90 border border-amber-200/80 rounded-xl p-4 mt-6 text-xs">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-bold text-amber-900 leading-snug">
+                        {language === 'ar' ? eligibility.messageAr : language === 'fr' ? eligibility.messageFr : eligibility.messageEn}
+                      </p>
+                      <Link 
+                        to="/products"
+                        className="inline-flex items-center gap-1 mt-2.5 font-bold text-accent-gold hover:text-primary-earth transition-colors"
+                      >
+                        <span>{language === 'ar' ? '← العودة للمتجر لإضافة المزيد' : '← Return to shop to add more'}</span>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <button 
                 type="submit"
-                disabled={isLoading || cart.length === 0}
+                disabled={isLoading || cart.length === 0 || !eligibility.isEligible}
                 className={`w-full py-5 mt-8 text-xs font-bold uppercase tracking-widest transition-all duration-300 ${
-                  (isLoading || cart.length === 0)
+                  (isLoading || cart.length === 0 || !eligibility.isEligible)
                     ? 'bg-gray-150 text-gray-400 border border-gray-200 cursor-not-allowed'
                     : 'bg-primary-earth text-white hover:bg-accent-gold cursor-pointer'
                 }`}
               >
-                {isLoading ? t('checkout.processing') : t('checkout.placeOrder')}
+                {isLoading 
+                  ? t('checkout.processing') 
+                  : !eligibility.isEligible 
+                    ? (language === 'ar' 
+                        ? (eligibility.remainingCount === 1 ? 'أضف منتجاً واحداً إضافياً' : `أضف ${eligibility.remainingCount} منتجات إضافية`)
+                        : language === 'fr'
+                        ? `Ajoutez ${eligibility.remainingCount} produit(s)`
+                        : `Add ${eligibility.remainingCount} more product(s)`)
+                    : t('checkout.placeOrder')}
               </button>
             </form>
           </motion.div>

@@ -11,6 +11,7 @@ import { tracker } from '../lib/tracker';
 import { fetchWithCache, getCachedSync } from '../lib/apiCache';
 import NotFoundPage from './NotFoundPage';
 import { matchesProduct } from '../lib/productMatch';
+import { checkOrderEligibility } from '../lib/cartOrderRules';
 
 import { ChevronLeft, ShoppingBag, Leaf, ShieldCheck, Heart, CreditCard, ZoomIn, ZoomOut, X, Maximize2, Info, Droplets, Minus, Plus, ChevronDown, ChevronUp, Truck, ShieldAlert, Check, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -31,7 +32,7 @@ import ProductAccordions from "./ProductAccordions";
 
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
-  const { addToCart, cart } = useCart();
+  const { addToCart, cart, setIsCartOpen } = useCart();
   const { t, language } = useLanguage();
   const navigate = useNavigate();
   const { products, storeSettings, loading, productError } = useProducts();
@@ -361,6 +362,11 @@ export default function ProductDetail() {
     : product;
 
   const handleCheckoutNow = () => {
+    const eligibility = checkOrderEligibility(cart);
+    if (!eligibility.isEligible) {
+      setIsCartOpen(true);
+      return;
+    }
     navigate('/checkout');
   };
 

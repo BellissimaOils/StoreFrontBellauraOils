@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit";
 import { isMaskedValue, sanitizeCredentials } from "../utils/sqlUtils";
 import { formatNotificationTemplate, generateOrderNbr, generateUUID } from "../utils/idUtils";
 import { fetchLivePackByIdD1 } from "../services/d1Client";
+import { checkOrderEligibility } from "../../lib/cartOrderRules";
 
 /**
  * Dedicated rate limiter for POST /checkout (10 requests / 15 minutes / IP)
@@ -637,6 +638,22 @@ export function createCheckoutRouter(state: CheckoutState) {
       return res.status(400).json({
         success: false,
         message: `Some items in your cart are no longer available: ${unresolvedItems.join(", ")}. Please refresh the page and try again.`,
+      });
+    }
+
+    const eligibility = checkOrderEligibility(validatedItems);
+    if (!eligibility.isEligible) {
+      releasePendingKey();
+      console.warn("[Checkout] Order rejected due to minimum order requirement:", {
+        singleCount: eligibility.singleCount,
+        hasPack: eligibility.hasPack,
+      });
+      return res.status(400).json({
+        success: false,
+        message: eligibility.messageAr,
+        messageAr: eligibility.messageAr,
+        messageFr: eligibility.messageFr,
+        messageEn: eligibility.messageEn,
       });
     }
 

@@ -1,6 +1,7 @@
-import { X, Plus, Minus, ShoppingBag, Clock, Truck, Sparkles } from 'lucide-react';
+import { X, Plus, Minus, ShoppingBag, Clock, Truck, Sparkles, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useLanguage } from '../context/LanguageContext';
+import { checkOrderEligibility } from '../lib/cartOrderRules';
 import { useProducts } from '../context/ProductContext';
 import { getOptimizedImageUrl } from '../lib/imageUtils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -78,8 +79,10 @@ export default function CartOverlay({ isOpen, onClose }: CartOverlayProps) {
   const [couponError, setCouponError] = useState('');
   const [couponSuccess, setCouponSuccess] = useState('');
   const [isApplying, setIsApplying] = useState(false);
+  const eligibility = checkOrderEligibility(cart);
 
   const handleCheckout = () => {
+    if (!eligibility.isEligible) return;
     onClose();
     navigate('/checkout');
   };
@@ -396,6 +399,37 @@ export default function CartOverlay({ isOpen, onClose }: CartOverlayProps) {
 
             {cart.length > 0 && (
               <div className="p-5 bg-background-soft border-t border-primary-earth/10 space-y-3">
+                {/* Minimum Order Eligibility Notification */}
+                <div className="mb-1">
+                  {!eligibility.isEligible ? (
+                    <div className="bg-amber-50/90 border border-amber-200/80 rounded-xl p-3 shadow-xs">
+                      <div className="flex items-start gap-2.5">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-amber-900 leading-snug">
+                            {language === 'ar' ? eligibility.messageAr : language === 'fr' ? eligibility.messageFr : eligibility.messageEn}
+                          </p>
+                          <div className="mt-2 w-full bg-amber-200/60 rounded-full h-1.5 overflow-hidden">
+                            <div 
+                              className="bg-amber-600 h-full rounded-full transition-all duration-300"
+                              style={{ width: `${eligibility.progressPercent}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between items-center mt-1.5 text-[10.5px] text-amber-800/80 font-medium">
+                            <span>{language === 'ar' ? `المضاف: ${eligibility.singleCount} من 3 منتجات` : `Ajouté: ${eligibility.singleCount}/3`}</span>
+                            <span className="font-bold text-amber-900">{language === 'ar' ? 'أو باقة واحدة (Pack)' : 'Ou 1 pack'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-emerald-50/90 border border-emerald-200/70 rounded-xl px-3 py-2 flex items-center gap-2 text-emerald-800 text-xs font-bold shadow-xs">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{language === 'ar' ? eligibility.messageAr : language === 'fr' ? eligibility.messageFr : eligibility.messageEn}</span>
+                    </div>
+                  )}
+                </div>
+
                 {/* Coupon Code Panel */}
                 <div className="border-b border-primary-earth/10 pb-3 mb-1">
                   {!appliedCoupon ? (
@@ -465,9 +499,22 @@ export default function CartOverlay({ isOpen, onClose }: CartOverlayProps) {
                 <div className="flex flex-col gap-2.5">
                   <button 
                     onClick={handleCheckout}
-                    className="w-full bg-primary-earth text-white py-3.5 rounded-xl text-sm font-bold uppercase tracking-wider hover:bg-accent-gold transition-colors duration-300 shadow-md hover:shadow-lg cursor-pointer"
+                    disabled={!eligibility.isEligible}
+                    className={`w-full py-3.5 rounded-xl text-sm font-bold uppercase tracking-wider transition-all duration-300 shadow-md ${
+                      eligibility.isEligible
+                        ? "bg-primary-earth text-white hover:bg-accent-gold hover:shadow-lg cursor-pointer active:scale-[0.99]"
+                        : "bg-neutral-300 text-neutral-500 cursor-not-allowed shadow-none"
+                    }`}
                   >
-                    {t('cart.checkout')}
+                    {eligibility.isEligible 
+                      ? t('cart.checkout') 
+                      : (language === 'ar' 
+                          ? (eligibility.remainingCount === 1 ? 'أضف منتجاً واحداً إضافياً للطلب' : `أضف ${eligibility.remainingCount} منتجات إضافية للطلب`)
+                          : language === 'fr'
+                          ? `Ajoutez ${eligibility.remainingCount} produit(s) pour commander`
+                          : `Add ${eligibility.remainingCount} more product(s) to checkout`
+                        )
+                    }
                   </button>
                   <button 
                     onClick={onClose}
