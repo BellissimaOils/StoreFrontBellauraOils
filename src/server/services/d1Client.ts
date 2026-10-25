@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { isMaskedValue, sanitizeCredentials, logD1ExecutionDetails } from "../utils/sqlUtils";
 import { normalizeSizeLabel, parseSizeMlFromLabel } from "../../lib/sizeUtils";
+import { normalizeCategory } from "../../lib/categoryMatch";
 import { getSeoIndex, overlayProductRows, overlaySectionRows } from "./seoSettings";
 
 // Core Cloudflare D1 data-access layer: raw query execution, schema
@@ -274,7 +275,7 @@ export function mapD1RowToProductSchema(d1p: any) {
     price: `${Math.round(rawPrice)} DH`,
     originalPrice: isSale && rawDiscountPrice > rawPrice ? `${Math.round(rawDiscountPrice)} DH` : null,
     image: d1p.image_url || d1p.image || "",
-    category: d1p.category || "Oils",
+    category: normalizeCategory(d1p.category),
     description: d1p.description || "",
     benefits: benefitsArr,
     usage: d1p.usage || "",

@@ -100,3 +100,22 @@ export function toListProduct<T extends Record<string, any>>(p: T): T {
   for (const f of HEAVY_FIELDS) if (f in out) out[f] = "";
   return out;
 }
+
+export type CanonicalCategory = "Oils" | "Skin" | "Hair";
+
+/**
+ * Normalizes any category string or legacy compound string
+ * (e.g. "Oils, Skin", "Skin, مجموعات", "Hair, مجموعات")
+ * to one of the 3 canonical categories: "Oils", "Skin", or "Hair".
+ */
+export function normalizeCategory(cat: any): CanonicalCategory {
+  const s = String(cat || "").toLowerCase();
+  if (s.includes("hair") || s.includes("cheveux") || s.includes("شعر") || s.includes("scalp") || s.includes("فروة")) {
+    return "Hair";
+  }
+  if (s.includes("skin") || s.includes("peau") || s.includes("بشرة") || s.includes("وجه")) {
+    return "Skin";
+  }
+  return "Oils";
+}
+
