@@ -258,15 +258,13 @@ function LivePackCard({ pack, index }: { pack: LivePack; index: number; key?: Re
           <div className="text-[10px] font-bold text-primary-earth/50 uppercase tracking-wider">
             {isAr ? "السعر الترويجي الخاص باللايف" : isFr ? "Prix Promotionnel Live" : "Special Live Price"}
           </div>
-          <div className="flex items-baseline justify-center gap-2.5">
+          <div className="flex items-baseline justify-center gap-1.5" dir="ltr">
             <span className="text-2xl sm:text-3xl font-black text-accent-gold font-sans tracking-tight">
-              {Math.round(pack.live_price)} DH
+              {Math.round(pack.live_price)}
             </span>
-            {pack.regular_price > pack.live_price && (
-              <span className="text-xs sm:text-sm text-primary-earth/40 line-through font-sans">
-                {Math.round(pack.regular_price)} DH
-              </span>
-            )}
+            <span className="text-base sm:text-lg font-bold text-accent-gold/90 font-sans">
+              DH
+            </span>
           </div>
         </div>
 
